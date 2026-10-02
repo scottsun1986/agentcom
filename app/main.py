@@ -18,9 +18,24 @@ logger = logging.getLogger("agentcom")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from app.database import init_db
+    from app.database import init_db, async_session_factory
     from app.mcp.server import MCP
+    from app.models.system import SysUser
+    from app.services.seed import _seed
+    from sqlalchemy import select
+
     await init_db()
+    try:
+        async with async_session_factory() as db:
+            res = await db.execute(select(SysUser.user_id).limit(1))
+            if res.scalar() is None:
+                logger.info("Empty database detected, auto-seeding demo data...")
+                async with db.begin():
+                    await _seed(db)
+                logger.info("Demo data seeding completed.")
+    except Exception as e:
+        logger.warning("Auto-seed check encountered non-fatal error: %s", e)
+
     # Streamable HTTP session manager must run for the lifetime of the server
     async with MCP.session_manager.run():
         logger.info("AgentCom started (MCP: /mcp, SSE: /sse), listening %s:%s", settings.host, settings.port)
