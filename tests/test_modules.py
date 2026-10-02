@@ -1,0 +1,177 @@
+"""Research, contacts, knowledge, portal and system tests."""
+
+
+async def test_topic_conflict_detection(client, admin_headers):
+    """防撞期核心：与种子课题 DY-2026-006 同点位同日期应命中冲突。"""
+    r = await client.post("/api/research/topics", headers=admin_headers, json={
+        "title": "冲突检测测试课题", "leader_name": "测试队长",
+        "lead_dept_id": "00000000-0000-0000-0000-000000000010",
+        "start_date": "2026-10-02", "end_date": "2026-10-03",
+        "points": [{"point_name": "XX区政务服务中心", "scheduled_date": "2026-10-02"}],
+    })
+    assert r.status_code == 200, r.text
+    topic = r.json()["data"]
+    assert topic.get("has_conflict") is True
+
+
+async def test_pure_conflict_check(client, admin_headers):
+    r = await client.post("/api/research/check-conflicts", headers=admin_headers, json={
+        "point_names": ["临江街道便民服务中心"], "start_date": "2026-10-02", "end_date": "2026-10-05",
+    })
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert data["has_conflict"] is True
+    assert data["conflicts"][0]["topic_title"]
+
+
+async def test_issue_to_supervision(client, admin_headers):
+    # create topic + issue then convert
+    r = await client.post("/api/research/topics", headers=admin_headers, json={
+        "title": "问题转化测试课题", "leader_name": "测试队长",
+        "lead_dept_id": "00000000-0000-0000-0000-000000000010",
+        "start_date": "2026-11-01", "end_date": "2026-11-02",
+        "points": [{"point_name": "问题转化测试点位", "scheduled_date": "2026-11-01"}],
+    })
+    topic = r.json()["data"]
+    tid = topic["topic_id"]
+    r2 = await client.post("/api/research/issues", headers=admin_headers, json={
+        "topic_id": tid, "issue_title": "闭环测试问题", "description": "测试问题描述",
+        "target_dept_id": "00000000-0000-0000-0000-000000000030",
+    })
+    issue = r2.json()["data"]
+    iid = issue["issue_id"]
+    r3 = await client.post(f"/api/research/issues/{iid}/to-supervision", headers=admin_headers,
+                           json={"deadline": "2026-12-31"})
+    assert r3.status_code == 200, r3.text
+    assert r3.json()["data"].get("supervision_no", "").startswith("DB-")
+
+
+async def test_topic_report_flow(client, admin_headers):
+    topics = (await client.get("/api/research/topics", headers=admin_headers)).json()["rows"]
+    t = topics[0]
+    r = await client.post(f"/api/research/topics/{t['topic_id']}/report", headers=admin_headers,
+                          json={"summary_report": "闭环测试调研报告"})
+    assert r.status_code == 200
+
+
+async def test_contacts_masking(client, admin_headers, staff_headers):
+    """非领导(李华)：管理员可见完整号码，普通员工只能看到掩码。"""
+    r_admin = await client.get("/api/contacts/employees?keyword=李华", headers=admin_headers)
+    row_admin = r_admin.json()["rows"][0]
+    assert row_admin["phonenumber"] and "****" not in row_admin["phonenumber"]
+    r_staff = await client.get("/api/contacts/employees?keyword=李华", headers=staff_headers)
+    rows = r_staff.json()["rows"]
+    assert rows and rows[0].get("phonenumber")
+    assert "****" in rows[0]["phonenumber"]
+
+
+async def test_org_tree(client, staff_headers):
+    r = await client.get("/api/contacts/org-tree", headers=staff_headers)
+    assert r.status_code == 200
+    tree = r.json()["data"]
+    assert tree and tree[0]["children"]
+
+
+async def test_partners_experts(client, admin_headers):
+    r = await client.get("/api/contacts/partners", headers=admin_headers)
+    assert len(r.json()["rows"]) >= 5
+    r2 = await client.get("/api/contacts/experts", headers=admin_headers)
+    assert len(r2.json()["rows"]) >= 5
+    r3 = await client.post("/api/contacts/partners", headers=admin_headers, json={
+        "unit_name": "测试外联单位", "partner_type": "GOV_PEER", "contact_name": "测试联系人",
+        "phone": "0571-80000000",
+    })
+    assert r3.status_code == 200
+
+
+async def test_sync_import(client, admin_headers):
+    r = await client.post("/api/contacts/sync/import", headers=admin_headers, json={
+        "rows": [{"user_name": "testimport1", "nick_name": "导入测试员", "dept_name": "综合办公室",
+                  "phonenumber": "13866667777", "sex": "0"}],
+    })
+    assert r.status_code == 200, r.text
+    data = r.json()["data"]
+    assert data.get("created", 0) + data.get("updated", 0) >= 1
+
+
+async def test_knowledge_search_and_graph(client, staff_headers):
+    r = await client.get("/api/knowledge/search?q=公务用车&top_k=3", headers=staff_headers)
+    assert r.status_code == 200
+    data = r.json()["data"]
+    items = data if isinstance(data, list) else data.get("results", [])
+    assert items and "公务用车" in items[0]["title"] + (items[0].get("keywords") or "")
+    r2 = await client.get("/api/knowledge/graph", headers=staff_headers)
+    g = r2.json()["data"]
+    assert g["nodes"] and g["edges"]
+
+
+async def test_knowledge_documents(client, admin_headers):
+    r = await client.get("/api/knowledge/documents?category=政策法规", headers=admin_headers)
+    assert len(r.json()["rows"]) >= 3
+    doc = r.json()["rows"][0]
+    r2 = await client.get(f"/api/knowledge/documents/{doc['doc_id']}", headers=admin_headers)
+    assert r2.status_code == 200
+
+
+async def test_portal_overview_and_todos(client, zhang_headers):
+    r = await client.get("/api/portal/overview", headers=zhang_headers)
+    data = r.json()["data"]
+    assert {"todos", "meetings", "supervision", "warnings"} <= set(data["kpi"])
+    r2 = await client.get("/api/portal/todos", headers=zhang_headers)
+    counts = r2.json()["data"]["counts"]
+    assert counts["all"] >= 5
+
+
+async def test_portal_calendar_and_notifications(client, zhang_headers):
+    r = await client.get("/api/portal/calendar?month=2026-10", headers=zhang_headers)
+    events = r.json()["data"]["events"]
+    assert isinstance(events, list)
+    r2 = await client.get("/api/portal/notifications", headers=zhang_headers)
+    items = r2.json()["data"]["items"]
+    assert items
+    # mark read
+    nid = items[0]["notice_id"]
+    r3 = await client.post(f"/api/portal/notifications/{nid}/read", headers=zhang_headers)
+    assert r3.status_code == 200
+
+
+async def test_portal_assistant(client, zhang_headers):
+    r = await client.post("/api/portal/assistant", headers=zhang_headers, json={"message": "查看督办预警"})
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert "督办" in data["reply"]
+    assert data["actions"]
+
+
+async def test_system_user_crud_and_role(client, admin_headers):
+    r = await client.post("/api/system/users", headers=admin_headers, json={
+        "user_name": "testsysuser", "nick_name": "系统测试员", "password": "Test@123",
+    })
+    assert r.status_code == 200
+    uid = r.json()["data"]["user_id"]
+    r2 = await client.put(f"/api/system/users/{uid}", headers=admin_headers, json={"status": "1"})
+    assert r2.status_code == 200
+    r3 = await client.delete(f"/api/system/users/{uid}", headers=admin_headers)
+    assert r3.status_code == 200
+
+
+async def test_system_roles_menus_dicts(client, admin_headers):
+    r = await client.get("/api/system/roles", headers=admin_headers)
+    roles = r.json()["rows"]
+    assert {"admin", "dept_leader", "staff"} <= {x["role_key"] for x in roles}
+    r2 = await client.get("/api/system/menus", headers=admin_headers)
+    menus = r2.json()["data"]
+    assert len(menus) >= 10
+    r3 = await client.get("/api/system/dict/types", headers=admin_headers)
+    assert r3.status_code == 200
+    r4 = await client.get("/api/system/dict/data?dict_type=att_leave_type", headers=admin_headers)
+    assert len(r4.json()["data"]) >= 4
+
+
+async def test_system_apps_and_logs(client, admin_headers):
+    r = await client.get("/api/system/apps", headers=admin_headers)
+    assert any(x["app_id"] == "agentcom-demo" for x in r.json()["data"])
+    r2 = await client.get("/api/system/logs", headers=admin_headers)
+    assert r2.status_code == 200
+    r3 = await client.get("/api/system/configs", headers=admin_headers)
+    assert len(r3.json()["data"]) >= 5

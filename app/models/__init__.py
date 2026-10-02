@@ -1,0 +1,133 @@
+"""All SQLAlchemy Models Aggregator."""
+
+from app.database import Base
+from app.models.system import (
+    DataScope,
+    SysAppCredential,
+    SysConfig,
+    SysDept,
+    SysDictData,
+    SysDictType,
+    SysMenu,
+    SysOperLog,
+    SysPost,
+    SysRole,
+    SysUser,
+    sys_role_dept,
+    sys_role_menu,
+    sys_user_post,
+    sys_user_role,
+)
+from app.models.attendance import (
+    AttClockRecord,
+    AttLeaveApplication,
+    AttPunchRemedy,
+    AttTripApplication,
+)
+from app.models.assets import (
+    AstCategory,
+    AstConsumable,
+    AstConsumableRequisition,
+    AstItemCard,
+    AstRequisition,
+    AstStocktakePlan,
+)
+from app.models.supervision import (
+    SupMilestone,
+    SupProgressReport,
+    SupTask,
+)
+from app.models.conference import (
+    ConfActionItem,
+    ConfAffair,
+    ConfAttendee,
+    ConfBooking,
+    ConfMinutes,
+    ConfRoom,
+    ConfServiceTicket,
+)
+from app.models.contacts import (
+    CtExpert,
+    CtExternalPartner,
+)
+from app.models.visitor import (
+    VisAppointment,
+    VisBlacklist,
+)
+from app.models.fleet import (
+    FltApplication,
+    FltDriver,
+    FltTripDispatch,
+    FltVehicle,
+)
+from app.models.research import (
+    RschIssueLog,
+    RschRoutePoint,
+    RschTopic,
+)
+from app.models.extras import (
+    AstMaintenanceLog,
+    AttLeaveQuota,
+    FltFuelLog,
+    FltMaintenanceLog,
+    KnbDocument,
+    SupExtensionRequest,
+    SysNotice,
+)
+
+__all__ = [
+    "Base",
+    "DataScope",
+    "SysDept",
+    "SysRole",
+    "SysMenu",
+    "SysPost",
+    "SysUser",
+    "sys_user_role",
+    "sys_role_menu",
+    "sys_role_dept",
+    "sys_user_post",
+    "SysDictType",
+    "SysDictData",
+    "SysConfig",
+    "SysOperLog",
+    "SysAppCredential",
+    "AttClockRecord",
+    "AttLeaveApplication",
+    "AttTripApplication",
+    "AttPunchRemedy",
+    "AstCategory",
+    "AstItemCard",
+    "AstRequisition",
+    "AstStocktakePlan",
+    "AstConsumable",
+    "AstConsumableRequisition",
+    "SupTask",
+    "SupMilestone",
+    "SupProgressReport",
+    "ConfRoom",
+    "ConfBooking",
+    "ConfAffair",
+    "ConfAttendee",
+    "ConfServiceTicket",
+    "ConfMinutes",
+    "ConfActionItem",
+    "CtExternalPartner",
+    "CtExpert",
+    "VisAppointment",
+    "VisBlacklist",
+    "FltVehicle",
+    "FltDriver",
+    "FltApplication",
+    "FltTripDispatch",
+    "RschTopic",
+    "RschRoutePoint",
+    "RschIssueLog",
+    "SysNotice",
+    "AttLeaveQuota",
+    "AstMaintenanceLog",
+    "FltMaintenanceLog",
+    "FltFuelLog",
+    "SupExtensionRequest",
+    "KnbDocument",
+]

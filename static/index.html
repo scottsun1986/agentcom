@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentCom 企业与政务协同办公管理平台</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script src="/static/vendor/vue.global.prod.js"></script>
+  <script src="/static/icons.js"></script>
+  <script src="/static/js/icons-extra.js"></script>
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/catalog.js"></script>
+  <script src="/static/js/components.js"></script>
+  <!-- page components -->
+  <script src="/static/js/pages/portal-login.js"></script>
+  <script src="/static/js/pages/portal-overview.js"></script>
+  <script src="/static/js/pages/portal-tasks.js"></script>
+  <script src="/static/js/pages/portal-calendar.js"></script>
+  <script src="/static/js/pages/portal-notifications.js"></script>
+  <script src="/static/js/pages/portal-assistant.js"></script>
+  <script src="/static/js/pages/attendance-dashboard.js"></script>
+  <script src="/static/js/pages/attendance-records.js"></script>
+  <script src="/static/js/pages/attendance-leave.js"></script>
+  <script src="/static/js/pages/attendance-trip.js"></script>
+  <script src="/static/js/pages/attendance-remedy.js"></script>
+  <script src="/static/js/pages/attendance-monthly-settlement.js"></script>
+  <script src="/static/js/pages/attendance-rules.js?v=2"></script>
+  <script src="/static/js/pages/assets-overview.js"></script>
+  <script src="/static/js/pages/assets-ledger.js"></script>
+  <script src="/static/js/pages/assets-inbound.js"></script>
+  <script src="/static/js/pages/assets-requisition.js"></script>
+  <script src="/static/js/pages/assets-borrow.js"></script>
+  <script src="/static/js/pages/assets-transfer.js"></script>
+  <script src="/static/js/pages/assets-maintenance.js"></script>
+  <script src="/static/js/pages/assets-stocktake.js"></script>
+  <script src="/static/js/pages/assets-depreciation-scrap.js"></script>
+  <script src="/static/js/pages/assets-consumables.js"></script>
+  <script src="/static/js/pages/supervision-dashboard.js?v=2"></script>
+  <script src="/static/js/pages/supervision-standing.js"></script>
+  <script src="/static/js/pages/supervision-decomposition.js"></script>
+  <script src="/static/js/pages/supervision-reporting.js"></script>
+  <script src="/static/js/pages/supervision-warning.js"></script>
+  <script src="/static/js/pages/supervision-extension.js"></script>
+  <script src="/static/js/pages/supervision-closeout.js"></script>
+  <script src="/static/js/pages/supervision-bulletin.js"></script>
+  <script src="/static/js/pages/conference-schedule.js"></script>
+  <script src="/static/js/pages/conference-rooms.js"></script>
+  <script src="/static/js/pages/conference-bookings.js"></script>
+  <script src="/static/js/pages/conference-affairs.js"></script>
+  <script src="/static/js/pages/conference-attendees.js"></script>
+  <script src="/static/js/pages/conference-seating.js"></script>
+  <script src="/static/js/pages/conference-services.js"></script>
+  <script src="/static/js/pages/conference-checkin.js"></script>
+  <script src="/static/js/pages/conference-minutes.js"></script>
+  <script src="/static/js/pages/conference-minutes-to-supervision.js"></script>
+  <script src="/static/js/pages/contacts-org-chart.js"></script>
+  <script src="/static/js/pages/contacts-employees.js"></script>
+  <script src="/static/js/pages/contacts-privacy-mask.js"></script>
+  <script src="/static/js/pages/contacts-partners.js"></script>
+  <script src="/static/js/pages/contacts-experts.js"></script>
+  <script src="/static/js/pages/contacts-sync.js"></script>
+  <script src="/static/js/pages/visitor-dashboard.js"></script>
+  <script src="/static/js/pages/visitor-reservations.js"></script>
+  <script src="/static/js/pages/visitor-invitations.js"></script>
+  <script src="/static/js/pages/visitor-registration.js"></script>
+  <script src="/static/js/pages/visitor-access-rule.js"></script>
+  <script src="/static/js/pages/visitor-blacklist.js"></script>
+  <script src="/static/js/pages/visitor-checkout.js"></script>
+  <script src="/static/js/pages/fleet-dashboard.js"></script>
+  <script src="/static/js/pages/fleet-vehicles.js"></script>
+  <script src="/static/js/pages/fleet-drivers.js"></script>
+  <script src="/static/js/pages/fleet-applications.js"></script>
+  <script src="/static/js/pages/fleet-dispatch.js"></script>
+  <script src="/static/js/pages/fleet-trip-logs.js"></script>
+  <script src="/static/js/pages/fleet-maintenance.js"></script>
+  <script src="/static/js/pages/fleet-fuel-audit.js"></script>
+  <script src="/static/js/pages/research-dashboard.js"></script>
+  <script src="/static/js/pages/research-topics.js"></script>
+  <script src="/static/js/pages/research-schedule-planner.js"></script>
+  <script src="/static/js/pages/research-itinerary.js"></script>
+  <script src="/static/js/pages/research-issues.js"></script>
+  <script src="/static/js/pages/research-reports.js"></script>
+  <script src="/static/js/pages/research-issues-to-supervision.js"></script>
+  <script src="/static/js/pages/system-user.js"></script>
+  <script src="/static/js/pages/system-role.js"></script>
+  <script src="/static/js/pages/system-menu.js"></script>
+  <script src="/static/js/pages/system-dept.js"></script>
+  <script src="/static/js/pages/system-post.js"></script>
+  <script src="/static/js/pages/system-dict.js"></script>
+  <script src="/static/js/pages/system-config.js"></script>
+  <script src="/static/js/pages/system-log.js"></script>
+  <script src="/static/js/pages/system-apps.js?v=2"></script>
+  <script src="/static/js/pages/knowledge-home.js"></script>
+  <script src="/static/js/pages/knowledge-search.js"></script>
+  <script src="/static/js/pages/knowledge-documents.js"></script>
+  <script src="/static/js/pages/knowledge-graph.js"></script>
+  <script src="/static/js/shell.js"></script>
+</head>
+<body>
+  <div id="app"></div>
+</body>
+</html>
