@@ -131,8 +131,63 @@ AppPages['/system/dept'] = {
           await this.load();
         } catch (e) { /* toast shown */ }
       },
-      importDepts() { this.$root.toast('组织导入功能即将上线', 'warn'); },
-      exportDepts() { this.$root.toast('组织导出功能即将上线', 'warn'); },
+      _countDepts(nodes) { return (nodes || []).reduce((s, n) => s + 1 + this._countDepts(n.children || []), 0); },
+      async exportDepts() {
+        try {
+          const rows = await api.get('/api/system/depts');
+          const blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'depts-' + new Date().toISOString().slice(0, 10) + '.json';
+          a.click(); URL.revokeObjectURL(a.href);
+          this.$root.toast('已导出 ' + this._countDepts(rows) + ' 个部门', 'ok');
+        } catch (e) { /* toast shown */ }
+      },
+      async importDepts() {
+        const inp = document.createElement('input');
+        inp.type = 'file'; inp.accept = '.json,application/json';
+        inp.onchange = async () => {
+          const file = inp.files && inp.files[0];
+          if (!file) return;
+          let tree;
+          try { tree = JSON.parse(await file.text()); } catch (e) { return this.$root.toast('文件解析失败，请选择导出的 JSON 文件', 'err'); }
+          if (!Array.isArray(tree)) return this.$root.toast('文件格式不正确（应为导出的组织树）', 'err');
+          if (!window.confirm('导入将按「同名同父更新、其余新建」合并 ' + this._countDepts(tree) + ' 个部门，继续？')) return;
+          const current = await api.get('/api/system/depts');
+          const idMap = {};
+          let created = 0, updated = 0, failed = 0;
+          const findBy = (nodes, pid, name) => {
+            for (const n of nodes) {
+              if (n.dept_name === name && (n.parent_id || null) === (pid || null)) return n;
+              const hit = findBy(n.children || [], pid, name);
+              if (hit) return hit;
+            }
+            return null;
+          };
+          const walk = async (nodes, parentOld) => {
+            for (const n of nodes) {
+              const pid = parentOld ? (idMap[parentOld] || null) : null;
+              const body = { dept_name: n.dept_name, parent_id: pid, order_num: n.order_num,
+                             leader: n.leader, phone: n.phone, email: n.email, status: n.status };
+              try {
+                const dup = findBy(current, pid, n.dept_name);
+                if (dup) {
+                  await api.put('/api/system/depts/' + dup.dept_id, body);
+                  updated++; idMap[n.dept_id] = dup.dept_id;
+                } else {
+                  const d = await api.post('/api/system/depts', body);
+                  created++; idMap[n.dept_id] = d.dept_id;
+                }
+                await walk(n.children || [], n.dept_id);
+              } catch (e) { failed++; }
+            }
+          };
+          await walk(tree, null);
+          await this.load();
+          this.$root.toast('导入完成：新建 ' + created + '、更新 ' + updated + (failed ? '、失败 ' + failed : ''), failed ? 'warn' : 'ok');
+        };
+        inp.click();
+      },
       onPrimary() { this.startCreate(null); },
     },
     template: `

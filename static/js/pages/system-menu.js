@@ -134,11 +134,79 @@ AppPages['/system/menu'] = {
         if (!window.confirm('确认删除菜单「' + n.menu_name + '」？存在子菜单时将无法删除。')) return;
         try { await api.del('/api/system/menus/' + n.menu_id); this.$root.toast('删除成功', 'ok'); if (this.selId === n.menu_id) this.startCreate(null); await this.load(); } catch (e) { /* toast shown */ }
       },
+      _countNodes(nodes) { return (nodes || []).reduce((s, n) => s + 1 + this._countNodes(n.children || []), 0); },
+      _download(tree, name) {
+        const blob = new Blob([JSON.stringify(tree, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = name + '-' + new Date().toISOString().slice(0, 10) + '.json';
+        a.click(); URL.revokeObjectURL(a.href);
+      },
       async exportMenus() {
-        this.$root.toast('菜单导出功能即将上线', 'warn');
+        try {
+          const rows = await api.get('/api/system/menus');
+          this._download(rows, 'menus');
+          this.$root.toast('已导出 ' + this._countNodes(rows) + ' 条菜单', 'ok');
+        } catch (e) { /* toast shown */ }
       },
       async importMenus() {
-        this.$root.toast('菜单导入功能即将上线', 'warn');
+        const inp = document.createElement('input');
+        inp.type = 'file'; inp.accept = '.json,application/json';
+        inp.onchange = async () => {
+          const file = inp.files && inp.files[0];
+          if (!file) return;
+          let tree;
+          try { tree = JSON.parse(await file.text()); } catch (e) { return this.$root.toast('文件解析失败，请选择导出的 JSON 文件', 'err'); }
+          if (!Array.isArray(tree)) return this.$root.toast('文件格式不正确（应为导出的菜单树）', 'err');
+          if (!window.confirm('导入将按「同名同父更新、其余新建」合并 ' + this._countNodes(tree) + ' 条菜单，继续？')) return;
+          const current = await api.get('/api/system/menus');
+          const idMap = {};
+          let created = 0, updated = 0, failed = 0;
+          const findBy = (nodes, pid, name) => {
+            for (const n of nodes) {
+              if (n.menu_name === name && (n.parent_id || null) === (pid || null)) return n;
+              const hit = findBy(n.children || [], pid, name);
+              if (hit) return hit;
+            }
+            return null;
+          };
+          const insertCurrent = (node) => {
+            if (node.parent_id) {
+              const findId = (nodes) => {
+                for (const n of nodes) { if (n.menu_id === node.parent_id) return n; const hit = findId(n.children || []); if (hit) return hit; }
+                return null;
+              };
+              const p = findId(current);
+              if (p) { p.children = p.children || []; p.children.push(node); return; }
+            }
+            current.push(node);
+          };
+          const walk = async (nodes, parentOld) => {
+            for (const n of nodes) {
+              const pid = parentOld ? (idMap[parentOld] || null) : null;
+              const body = { menu_name: n.menu_name, parent_id: pid, top_category: n.top_category,
+                             order_num: n.order_num, path: n.path, component: n.component,
+                             menu_type: n.menu_type, perms: n.perms, icon: n.icon,
+                             visible: n.visible, status: n.status };
+              try {
+                const dup = findBy(current, pid, n.menu_name);
+                if (dup) {
+                  await api.put('/api/system/menus/' + dup.menu_id, body);
+                  updated++; idMap[n.menu_id] = dup.menu_id;
+                } else {
+                  const d = await api.post('/api/system/menus', body);
+                  created++; idMap[n.menu_id] = d.menu_id;
+                  insertCurrent({ menu_id: d.menu_id, menu_name: n.menu_name, parent_id: pid, children: [] });
+                }
+                await walk(n.children || [], n.menu_id);
+              } catch (e) { failed++; }
+            }
+          };
+          await walk(tree, null);
+          await this.load();
+          this.$root.toast('导入完成：新建 ' + created + '、更新 ' + updated + (failed ? '、失败 ' + failed : ''), failed ? 'warn' : 'ok');
+        };
+        inp.click();
       },
       onPrimary() { this.startCreate(null); },
     },

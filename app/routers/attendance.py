@@ -469,6 +469,39 @@ async def attendance_dashboard(p: Principal = Depends(require_auth), db: AsyncSe
     })
 
 
+OVERTIME_AFTER_MIN = 60  # 工作日下班后加班满 60 分钟才计入加班池
+
+
+async def _work_end_time(db: AsyncSession) -> time:
+    """Work end time from attendance rule config (default 18:00)."""
+    from app.models.system import SysConfig
+    import json as _json
+    cfg = (await db.execute(select(SysConfig).where(SysConfig.config_key == "attendance.rule.json"))).scalar_one_or_none()
+    try:
+        return time.fromisoformat(_json.loads(cfg.config_value).get("work_end", "18:00"))
+    except Exception:
+        return time(18, 0)
+
+
+def _overtime_minutes(out_local_times: list[datetime], work_end_t: time) -> int:
+    """Sum overtime minutes across workdays: latest OUT punch per workday,
+    counting minutes after work_end only when the day clears the threshold."""
+    per_day: dict[date, datetime] = {}
+    for lt in out_local_times:
+        if lt.weekday() >= 5:
+            continue
+        d = lt.date()
+        if d not in per_day or lt > per_day[d]:
+            per_day[d] = lt
+    end_min = work_end_t.hour * 60 + work_end_t.minute
+    total = 0
+    for lt in per_day.values():
+        minutes = lt.hour * 60 + lt.minute - end_min
+        if minutes >= OVERTIME_AFTER_MIN:
+            total += minutes
+    return total
+
+
 @router.get("/monthly-settlement")
 async def monthly_settlement(
     month: str = Query(default=None, description="YYYY-MM"),
@@ -501,6 +534,7 @@ async def monthly_settlement(
     )).scalars().all()
 
     rows = []
+    work_end_t = await _work_end_time(db)
     for u in users:
         recs = [r for r in records if r.user_id == u.user_id]
         days = {r.punch_time.astimezone(BUSINESS_TZ).date() for r in recs}
@@ -513,7 +547,10 @@ async def monthly_settlement(
             "late": sum(1 for r in recs if r.status == "LATE"),
             "early": sum(1 for r in recs if r.status == "EARLY"),
             "leave_days": my_leaves, "trip_days": my_trips,
-            "overtime_hours": 0,
+            "overtime_hours": round(_overtime_minutes(
+                [r.punch_time.astimezone(BUSINESS_TZ) for r in recs if r.punch_type in ("OUT", "FIELD")],
+                work_end_t,
+            ) / 60.0, 1),
         })
     return ok({"month": f"{y}-{m:02d}", "locked": False, "rows": rows})
 
@@ -548,3 +585,95 @@ async def put_rules(body: dict, p: Principal = Depends(require_perms("attendance
     else:
         cfg.config_value = _json.dumps(body, ensure_ascii=False)
     return ok(body, "规则已保存")
+
+
+# ---------------- overtime → comp exchange ----------------
+
+@router.get("/overtime/summary")
+async def overtime_summary(p: Principal = Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Personal overtime pool + exchange ledger.
+
+    Pool = workday clock-out minutes beyond work_end (>= 60min threshold),
+    minus hours already exchanged into COMP quota."""
+    from app.models.attendance import AttOvertimeExchange
+
+    recs = (await db.execute(
+        select(AttClockRecord).where(
+            AttClockRecord.user_id == p.user_id,
+            AttClockRecord.punch_type.in_(("OUT", "FIELD")),
+        )
+    )).scalars().all()
+    work_end_t = await _work_end_time(db)
+    accrued_hours = round(_overtime_minutes(
+        [r.punch_time.astimezone(BUSINESS_TZ) for r in recs], work_end_t) / 60.0, 1)
+
+    exchanges = (await db.execute(
+        select(AttOvertimeExchange).where(AttOvertimeExchange.user_id == p.user_id)
+        .order_by(AttOvertimeExchange.created_at.desc())
+    )).scalars().all()
+    exchanged_hours = round(sum(e.hours for e in exchanges), 1)
+    return ok({
+        "accrued_hours": accrued_hours,
+        "exchanged_hours": exchanged_hours,
+        "available_hours": round(accrued_hours - exchanged_hours, 1),
+        "exchanged_days": round(sum(e.days for e in exchanges), 1),
+        "rule": f"工作日 {work_end_t.strftime('%H:%M')} 后下班满 {OVERTIME_AFTER_MIN} 分钟计入加班池，8 小时 = 1 天调休（0.5 天起兑）",
+        "records": [{
+            "exchange_id": str(e.exchange_id), "month": e.month,
+            "hours": e.hours, "days": e.days, "note": e.note,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        } for e in exchanges],
+    })
+
+
+@router.post("/overtime/exchange")
+async def overtime_exchange(
+    body: dict,
+    p: Principal = Depends(require_perms("attendance:leave:add")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Exchange accrued overtime hours for COMP leave quota (8h = 1 day)."""
+    from app.models.attendance import AttOvertimeExchange
+    import math
+
+    try:
+        hours = round(float(body.get("hours") or 0), 1)
+    except (TypeError, ValueError):
+        raise ApiError(400, "兑换时数无效")
+    if hours < 1:
+        raise ApiError(400, "单次兑换至少 1 小时")
+
+    recs = (await db.execute(
+        select(AttClockRecord).where(
+            AttClockRecord.user_id == p.user_id,
+            AttClockRecord.punch_type.in_(("OUT", "FIELD")),
+        )
+    )).scalars().all()
+    work_end_t = await _work_end_time(db)
+    accrued = _overtime_minutes([r.punch_time.astimezone(BUSINESS_TZ) for r in recs], work_end_t) / 60.0
+    exchanged = sum(e.hours for e in (await db.execute(
+        select(AttOvertimeExchange).where(AttOvertimeExchange.user_id == p.user_id)
+    )).scalars().all())
+    available = round(accrued - exchanged, 1)
+    if hours > available:
+        raise ApiError(400, f"可兑换加班仅剩 {available} 小时")
+
+    days = math.floor(hours / 8 * 2) / 2  # 0.5 天粒度
+    if days < 0.5:
+        raise ApiError(400, "加班时数不足以折算 0.5 天调休（8 小时 = 1 天）")
+
+    tznow = datetime.now(BUSINESS_TZ)
+    rec = AttOvertimeExchange(
+        user_id=p.user_id, month=tznow.strftime("%Y-%m"),
+        hours=hours, days=days,
+        note=(str(body.get("note") or "").strip() or None),
+    )
+    db.add(rec)
+    q = await get_quota(db, p.user_id, "COMP")
+    q.total_days = (q.total_days or 0) + days
+    await db.flush()
+    return ok({
+        "exchange_id": str(rec.exchange_id), "hours": hours, "days": days,
+        "comp_total_days": q.total_days,
+        "available_hours": round(available - hours, 1),
+    }, "兑换成功，调休额度已入账")

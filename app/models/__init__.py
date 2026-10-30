@@ -20,6 +20,7 @@ from app.models.system import (
 )
 from app.models.attendance import (
     AttClockRecord,
+    AttOvertimeExchange,
     AttLeaveApplication,
     AttPunchRemedy,
     AttTripApplication,
@@ -93,6 +94,7 @@ __all__ = [
     "SysOperLog",
     "SysAppCredential",
     "AttClockRecord",
+    "AttOvertimeExchange",
     "AttLeaveApplication",
     "AttTripApplication",
     "AttPunchRemedy",

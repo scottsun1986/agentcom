@@ -89,3 +89,22 @@ class AttPunchRemedy(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     user = relationship("SysUser", foreign_keys=[user_id])
+
+
+class AttOvertimeExchange(Base):
+    """Overtime-to-comp-time exchange ledger (8h = 1 day, 0.5-day granularity).
+
+    The exchangeable pool is derived from real workday clock-out records
+    (OUT punch after work_end + threshold); each exchange credits the
+    employee's COMP leave quota for the current year."""
+    __tablename__ = "att_overtime_exchange"
+
+    exchange_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("sys_user.user_id", ondelete="CASCADE"), index=True)
+    month: Mapped[str] = mapped_column(String(7), nullable=False)  # 记账月 YYYY-MM
+    hours: Mapped[float] = mapped_column(Float, nullable=False)
+    days: Mapped[float] = mapped_column(Float, nullable=False)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    user = relationship("SysUser")

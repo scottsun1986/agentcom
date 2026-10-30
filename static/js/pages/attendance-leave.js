@@ -11,6 +11,10 @@ AppPages['/attendance/leave'] = {
         quotas: [],
         myQuotas: [],
         canAudit: false,
+        ot: null,
+        showExchange: false,
+        exchanging: false,
+        otForm: { hours: 1, note: '' },
         tab: 'all',
         filters: { type: '', status: '', start: '', end: '', keyword: '' },
         pageNum: 1,
@@ -90,6 +94,24 @@ AppPages['/attendance/leave'] = {
         } catch (e) { this.leaves = []; }
         try { this.quotas = await api.get('/api/attendance/quotas'); } catch (e) { this.quotas = []; }
         this.myQuotas = this.quotas.filter((q) => !this.myId || q.user_id === this.myId);
+        try { this.ot = await api.get('/api/attendance/overtime/summary'); } catch (e) { this.ot = null; }
+      },
+      openExchange() {
+        this.otForm = { hours: 1, note: '' };
+        this.showExchange = true;
+      },
+      async submitExchange() {
+        const h = Number(this.otForm.hours);
+        if (!h || h < 1) return this.$root.toast('单次兑换至少 1 小时', 'warn');
+        if (this.ot && h > this.ot.available_hours) return this.$root.toast('超出可兑换加班时数', 'warn');
+        this.exchanging = true;
+        try {
+          const d = await api.post('/api/attendance/overtime/exchange', { hours: h, note: this.otForm.note.trim() });
+          this.showExchange = false;
+          this.$root.toast('兑换成功，' + d.days + ' 天调休已入账（当前调休总额 ' + d.comp_total_days + ' 天）', 'ok');
+          await this.load();
+        } catch (e) { /* toast shown */ }
+        this.exchanging = false;
       },
       statusLabel(s) { return { PENDING: '待审批', APPROVED: '已通过', REJECTED: '已驳回', CANCELLED: '已作废' }[s] || s; },
       statusTag(s) { return { PENDING: 'tag-blue', APPROVED: 'tag-green', REJECTED: 'tag-red', CANCELLED: 'tag-gray' }[s] || 'tag-gray'; },
@@ -243,8 +265,32 @@ AppPages['/attendance/leave'] = {
           </div>
         </div>
         <div class="card" style="margin-top:0">
-          <div class="card-hd"><div class="t">加班兑换调休流水</div><span class="more">更多 <ic name="chevron-right" size="14"></ic></span></div>
-          <div class="card-bd"><div class="empty">加班调休兑换功能即将上线，暂无流水</div></div>
+          <div class="card-hd">
+            <div class="t">加班兑换调休</div>
+            <button class="btn btn-primary btn-sm" v-if="ot && ot.available_hours >= 1" @click="openExchange"><ic name="history" size="13"></ic>兑换调休</button>
+          </div>
+          <div class="card-bd" v-if="ot">
+            <div class="desc-list" style="grid-template-columns: auto auto auto; column-gap:26px; row-gap:4px; margin-bottom:10px">
+              <span class="k">累计加班</span><span class="k">已兑换</span><span class="k">可兑换</span>
+              <span class="strong num" style="font-size:16px; color:var(--primary)">{{ ot.accrued_hours }} 小时</span>
+              <span class="strong num" style="font-size:16px; color:var(--text-2)">{{ ot.exchanged_hours }} 小时<span class="muted" style="font-weight:400">（{{ ot.exchanged_days }} 天）</span></span>
+              <span class="strong num" style="font-size:16px; color:var(--teal)">{{ ot.available_hours }} 小时</span>
+            </div>
+            <div class="muted" style="font-size:11.5px; margin-bottom:8px">{{ ot.rule }}</div>
+            <table class="table" v-if="ot.records.length">
+              <thead><tr><th>兑换时间</th><th style="width:90px">加班时数</th><th style="width:90px">折算调休</th><th>备注</th></tr></thead>
+              <tbody>
+                <tr v-for="r in ot.records" :key="r.exchange_id">
+                  <td class="num muted">{{ bj(r.created_at) }}</td>
+                  <td class="num">{{ r.hours }} 小时</td>
+                  <td class="num" style="color:var(--green); font-weight:600">{{ r.days }} 天</td>
+                  <td class="muted">{{ r.note || '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <div v-else class="empty" style="padding:18px 0">暂无兑换记录，工作日下班后加班打卡将自动计入加班池</div>
+          </div>
+          <div class="card-bd" v-else><div class="empty" style="padding:18px 0">加载中…</div></div>
         </div>
       </div>
 
@@ -290,6 +336,23 @@ AppPages['/attendance/leave'] = {
         </div>
         <template #footer>
           <button class="btn btn-ghost" @click="detail = null">关闭</button>
+        </template>
+      </Modal>
+
+      <!-- overtime exchange modal -->
+      <Modal title="加班兑换调休" width="440px" v-if="showExchange" @close="showExchange = false">
+        <div class="cfg-help" style="margin:0 0 12px"><ic name="info" size="13"></ic> 当前可兑换 <b>{{ ot.available_hours }}</b> 小时加班；8 小时 = 1 天调休，按 0.5 天取整入账。</div>
+        <div class="form-item">
+          <label class="req">兑换时数（小时）</label>
+          <input type="number" class="input" style="flex:1" min="1" step="1" :max="ot ? ot.available_hours : 1" v-model="otForm.hours">
+        </div>
+        <div class="form-item">
+          <label>备注</label>
+          <input class="input" style="flex:1" placeholder="如：项目攻坚周加班（选填）" v-model="otForm.note">
+        </div>
+        <template #footer>
+          <button class="btn btn-ghost" @click="showExchange = false">取消</button>
+          <button class="btn btn-primary" :disabled="exchanging" @click="submitExchange"><ic name="history" size="14"></ic>确认兑换</button>
         </template>
       </Modal>
     </div>

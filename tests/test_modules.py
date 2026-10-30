@@ -205,3 +205,63 @@ async def test_system_apps_and_logs(client, admin_headers):
     assert r2.status_code == 200
     r3 = await client.get("/api/system/configs", headers=admin_headers)
     assert len(r3.json()["data"]) >= 5
+
+
+async def test_overtime_exchange_flow(client, staff_headers, admin_headers):
+    """加班兑换闭环：工作日 20:30 下班打卡计入加班池 → 兑换 4 小时得 0.5 天调休 → COMP 额度入账。"""
+    import uuid as _uuid
+    from datetime import datetime, timedelta, timezone as _tz
+
+    from app.config import BUSINESS_TZ
+    from app.database import async_session_factory
+    from app.models.attendance import AttClockRecord
+    from app.models.system import SysUser
+    from sqlalchemy import select
+
+    r = await client.get("/api/contacts/employees", headers=admin_headers, params={"keyword": "李华"})
+    uid = r.json()["rows"][0]["user_id"]
+
+    async with async_session_factory() as db:
+        user = (await db.execute(select(SysUser).where(SysUser.user_id == _uuid.UUID(uid)))).scalar_one()
+        base = datetime.now(BUSINESS_TZ).replace(hour=20, minute=30, second=0, microsecond=0) - timedelta(days=7)
+        inserted = 0
+        for delta in range(0, 10):
+            d = base - timedelta(days=delta)
+            if d.weekday() >= 5:
+                continue
+            db.add(AttClockRecord(
+                user_id=user.user_id, punch_type="OUT",
+                punch_time=d.astimezone(_tz.utc),
+            ))
+            inserted += 1
+            if inserted == 3:
+                break
+        await db.commit()
+
+    s = await client.get("/api/attendance/overtime/summary", headers=staff_headers)
+    assert s.status_code == 200, s.text
+    data = s.json()["data"]
+    assert data["accrued_hours"] >= 7.5, f"3 个工作日 20:30 下班应累计 7.5 小时, got {data['accrued_hours']}"
+    assert data["available_hours"] == data["accrued_hours"]
+
+    ex = await client.post("/api/attendance/overtime/exchange", headers=staff_headers,
+                           json={"hours": 4, "note": "专项攻坚加班"})
+    assert ex.status_code == 200, ex.text
+    d = ex.json()["data"]
+    assert d["days"] == 0.5
+    assert d["available_hours"] == round(data["available_hours"] - 4, 1)
+
+    s2 = await client.get("/api/attendance/overtime/summary", headers=staff_headers)
+    d2 = s2.json()["data"]
+    assert d2["exchanged_hours"] == 4 and d2["exchanged_days"] == 0.5
+    assert d2["available_hours"] == d["available_hours"]
+
+    # 超额兑换被拦截
+    over = await client.post("/api/attendance/overtime/exchange", headers=staff_headers,
+                             json={"hours": 9999})
+    assert over.status_code == 400
+
+    # 月度结算的加班时数为真实计算（非 0 占位）
+    ms = await client.get("/api/attendance/monthly-settlement", headers=admin_headers)
+    mine = [x for x in ms.json()["data"]["rows"] if x["user_id"] == uid]
+    assert mine and mine[0]["overtime_hours"] > 0

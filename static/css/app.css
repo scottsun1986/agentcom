@@ -1193,3 +1193,8 @@ mark.ks-hl { background: var(--red-weak); color: var(--red); font-weight: 600; p
   .kb-cols { grid-template-columns: minmax(0, 1fr); }
 }
 .gantt-row .sch-tick-lb:first-child { transform: none; }
+
+/* ---------- 全局工具类补遗（各模块一致性审计补齐） ---------- */
+.kpi-row-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }
+.ico-weak { background: #EEF2F7; color: var(--text-3); }
+.mt0 { margin-top: 0 !important; }
