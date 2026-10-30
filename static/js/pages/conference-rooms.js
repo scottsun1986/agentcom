@@ -7,7 +7,6 @@ AppPages['/conference/rooms'] = {
     data() {
       return {
         loading: true,
-        rooms: [],
         allRooms: [],
         selected: null,
         filters: { keyword: '', status: '' },

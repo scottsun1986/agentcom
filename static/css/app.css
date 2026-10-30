@@ -1068,3 +1068,128 @@ mark.ks-hl { background: var(--red-weak); color: var(--red); font-weight: 600; p
 .kd-tab { display:inline-flex; align-items:center; gap:6px; padding:7px 14px; border:1px solid var(--line); border-radius:6px; cursor:pointer; font-size:13px; color:var(--text-2); background:#fff; }
 .kd-tab:hover { color:var(--primary); border-color:var(--primary); }
 .kd-tab.on { color:var(--primary); border-color:var(--primary); background:var(--primary-weak); font-weight:600; }
+
+/* ================= page: /conference/* (shared) ================= */
+
+/* ---------- 通用小件 ---------- */
+.ell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot-gray { background: #B6C3D2; }
+.gd-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.table tbody tr.sel td { background: var(--primary-weak); }
+.ava { width: 30px; height: 30px; border-radius: 50%; background: var(--primary); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; flex: none; }
+.ava-vip { background: linear-gradient(135deg, #B0423F 0%, #D9A441 100%); box-shadow: 0 0 0 2px #F5E6C8; }
+
+/* ---------- /conference/schedule 日程甘特大屏 ---------- */
+.sch-legend { display: flex; align-items: center; gap: 14px; font-size: 11.5px; color: var(--text-3); flex-wrap: wrap; }
+.sch-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.sch-legend i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.sch-tick-lb { position: absolute; top: 1px; font-size: 10.5px; color: var(--text-3); transform: translateX(-50%); font-variant-numeric: tabular-nums; }
+.sch-block { cursor: pointer; font-weight: 500; z-index: 1; }
+.sch-block b { font-weight: 700; }
+.sch-block:hover { filter: brightness(.96); box-shadow: 0 2px 8px rgba(16, 42, 67, .18); z-index: 3; }
+.gantt-vline { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed #E8EDF4; pointer-events: none; }
+.gantt-free { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #A8B8C8; font-size: 11px; letter-spacing: 3px; pointer-events: none; }
+.now-line { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--red); border-radius: 1px; z-index: 2; pointer-events: none; }
+.now-line::before { content: ""; position: absolute; top: -3px; left: -2.5px; width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
+.gantt-block.gb-teal { background: var(--teal-weak); border-color: var(--teal); color: var(--teal); }
+.gantt-block.gb-amber { background: var(--amber-weak); border-color: var(--amber); color: #C77F06; }
+
+/* 环形统计（今日会议统计 / 会议室使用率） */
+.donut-row { display: flex; align-items: center; gap: 22px; padding: 8px 2px 2px; }
+.donut { width: 112px; height: 112px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; }
+.donut-hole { width: 74px; height: 74px; border-radius: 50%; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.donut-hole b { font-size: 20px; color: var(--text); line-height: 1.15; }
+.donut-hole span { font-size: 10.5px; color: var(--text-3); }
+.dn-legend { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.dn-legend .row { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-2); }
+.dn-legend .row i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.dn-legend .row b { margin-left: auto; color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* 近期会议提醒 */
+.up-row { display: flex; align-items: center; gap: 9px; padding: 9px 4px; border-bottom: 1px dashed #EEF2F7; cursor: pointer; font-size: 12.5px; border-radius: 6px; }
+.up-row:hover { background: #F8FAFD; }
+.up-row:last-child { border-bottom: none; }
+.up-row i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+
+/* ---------- /conference/rooms 会议室维护 ---------- */
+.rooms-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.room-photo { height: 108px; border-radius: 8px; background: linear-gradient(135deg, var(--primary-weak), var(--teal-weak)); color: var(--primary); display: flex; align-items: center; justify-content: center; }
+.room-meta { display: grid; grid-template-columns: 78px 1fr; row-gap: 7px; column-gap: 10px; font-size: 12.5px; }
+.room-meta .k { color: var(--text-3); }
+.amenity-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; background: #F4F7FB; border: 1px solid var(--line); border-radius: 999px; font-size: 11px; color: var(--text-2); white-space: nowrap; }
+.chip-pick { cursor: pointer; transition: all .15s; user-select: none; }
+.chip-pick:hover { border-color: var(--primary); color: var(--primary); }
+.chip-pick.on { background: var(--primary-weak); border-color: var(--primary); color: var(--primary); font-weight: 600; }
+
+/* ---------- /conference/bookings 冲突预检结果 ---------- */
+.bk-result { display: flex; align-items: flex-start; gap: 8px; border-radius: 8px; padding: 10px 12px; font-size: 12.5px; line-height: 1.6; margin-top: 10px; }
+.bk-result b { font-weight: 600; }
+.bk-result.ok { background: var(--green-weak); color: var(--green); }
+.bk-result.bad { background: var(--red-weak); color: var(--red); }
+
+/* ---------- /conference/affairs 统筹单 ---------- */
+.type-pick { display: flex; flex-wrap: wrap; gap: 8px; }
+.type-pick .tp { display: inline-flex; align-items: center; gap: 5px; padding: 7px 13px; border: 1px solid var(--line); border-radius: 6px; font-size: 12.5px; color: var(--text-2); cursor: pointer; user-select: none; transition: all .15s; background: #fff; }
+.type-pick .tp:hover { border-color: var(--primary); color: var(--primary); }
+.type-pick .tp.on { background: var(--primary-weak); border-color: var(--primary); color: var(--primary); font-weight: 600; }
+.radio-dot { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2); cursor: pointer; }
+.radio-dot input { accent-color: var(--primary); }
+.agenda-box { background: #F8FAFD; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; font-size: 12.5px; line-height: 1.9; white-space: pre-wrap; color: var(--text); }
+
+/* ---------- 参会人列表（排座/签到共用） ---------- */
+.att-scroll { max-height: 560px; overflow-y: auto; }
+.att-row { display: flex; align-items: center; gap: 10px; padding: 8px 6px; border-bottom: 1px dashed #EEF2F7; border-radius: 6px; }
+.att-row:hover { background: #F8FAFD; }
+.att-row:last-child { border-bottom: none; }
+
+/* ---------- /conference/seating 智能排座 ---------- */
+.seat-layout { display: grid; grid-template-columns: minmax(0, .92fr) minmax(0, 1.55fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.stage-band { background: linear-gradient(180deg, var(--navy-2), var(--navy)); color: #fff; text-align: center; letter-spacing: 10px; text-indent: 10px; font-weight: 700; font-size: 14px; padding: 10px 0; border-radius: 8px 8px 2px 2px; }
+.stage-floor { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; background: #F8FAFD; border: 1px dashed #C9D6E4; border-top: none; border-radius: 0 0 10px 10px; padding: 16px 12px 14px; }
+.seat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; margin-top: 14px; }
+.seat-card { background: #fff; border: 1px solid var(--line); border-top: 3px solid #C9D6E4; border-radius: 8px; padding: 9px 6px 8px; text-align: center; box-shadow: var(--shadow); }
+.seat-card .no { font-size: 10.5px; color: var(--text-3); letter-spacing: 1px; }
+.seat-card .nm { font-size: 13.5px; font-weight: 700; color: var(--text); margin: 3px 0 1px; }
+.seat-card .ps { font-size: 11px; color: var(--text-3); }
+.seat-card.vip { border-color: #D9C08A; border-top-color: #B0423F; background: linear-gradient(180deg, #FDF9F0, #fff 60%); }
+.rule-opt { position: relative; display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; cursor: pointer; margin-bottom: 8px; transition: all .15s; background: #fff; }
+.rule-opt:hover { border-color: #B6C3D2; }
+.rule-opt.on { border-color: var(--primary); background: var(--primary-weak); }
+.rule-opt input { position: absolute; opacity: 0; }
+.rule-opt .rt { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text); }
+.rule-opt .rd { font-size: 11.5px; color: var(--text-3); margin-top: 2px; line-height: 1.5; }
+
+/* ---------- /conference/services 会务保障派工看板 ---------- */
+.kb-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.kb-col { background: #F7FAFD; border: 1px solid var(--line); border-top-width: 3px; border-radius: 10px; padding: 10px; min-height: 260px; }
+.kb-col.c-pending { border-top-color: var(--amber); }
+.kb-col.c-processing { border-top-color: var(--primary); }
+.kb-col.c-completed { border-top-color: var(--green); }
+.kb-hd { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--text); padding: 2px 4px 10px; }
+.kb-hd .cnt { margin-left: auto; font-weight: 400; font-size: 11px; color: var(--text-3); }
+.kb-card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; box-shadow: var(--shadow); font-size: 12.5px; }
+.kb-card .nt { font-size: 11.5px; color: var(--text-3); margin-top: 4px; }
+
+/* ---------- /conference/checkin 电子签到墙 ---------- */
+.ci-wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(152px, 1fr)); gap: 12px; }
+.ci-card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px 10px 11px; text-align: center; transition: all .15s; }
+.ci-card .ava { width: 40px; height: 40px; font-size: 16px; margin: 0 auto 7px; }
+.ci-card .nm { font-size: 13.5px; font-weight: 700; color: var(--text); }
+.ci-card .dp { font-size: 11px; color: var(--text-3); margin-top: 1px; }
+.ci-card .tm { font-size: 11px; margin-top: 7px; color: var(--teal); display: flex; align-items: center; justify-content: center; gap: 3px; }
+.ci-card.signed { border-color: #BFE5CF; background: linear-gradient(180deg, var(--green-weak), #fff 75%); }
+
+/* ---------- /conference/minutes 纪要编辑与预览 ---------- */
+.ed-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: stretch; }
+.ed-cap { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); margin-bottom: 8px; }
+.md-prev { background: #F8FAFD; border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; font-size: 12.5px; line-height: 1.9; color: var(--text); min-height: 220px; overflow-y: auto; }
+.md-prev h1, .md-prev h2 { font-size: 14.5px; margin: 8px 0 6px; }
+.md-prev h3, .md-prev h4 { font-size: 13px; margin: 6px 0 4px; }
+.md-prev p { margin: 4px 0; }
+.md-li { margin: 6px 0; padding-left: 16px; border-left: 3px solid var(--primary-weak); display: flex; flex-direction: column; gap: 3px; }
+
+@media (max-width: 1180px) {
+  .rooms-layout, .seat-layout, .ed-split { grid-template-columns: minmax(0, 1fr); }
+  .kb-cols { grid-template-columns: minmax(0, 1fr); }
+}
+.gantt-row .sch-tick-lb:first-child { transform: none; }
