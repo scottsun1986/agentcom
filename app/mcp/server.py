@@ -1,8 +1,8 @@
 """MCP 2.2.0 server exposing the AgentCom tool chain.
 
 Transport: Streamable HTTP at /mcp (plus legacy SSE at /sse).
-Auth: X-App-ID / X-App-Secret headers validated against sys_app_credential
-(scopes enforced by tool-level scope declarations)."""
+Auth: 标准单 Secret 模式 — `Authorization: Bearer <Agent Secret>` validated
+against sys_app_credential (scopes enforced by tool-level scope declarations)."""
 
 import asyncio
 import contextlib
@@ -14,6 +14,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from mcp.server.mcpserver import MCPServer
 
 from app.config import BUSINESS_TZ, get_settings
+from app.core.agent_token import app_id_from_secret, bearer_secret
 from app.core.deps import Principal
 from app.core.security import verify_password
 from app.database import async_session_factory
@@ -38,11 +39,14 @@ _auth_cache: dict[str, tuple[float, SysAppCredential]] = {}
 _AUTH_TTL = 300
 
 
-async def validate_agent_credentials(app_id: str | None, app_secret: str | None) -> SysAppCredential | None:
-    """Validate agent app credentials against DB (with short TTL cache)."""
-    if not app_id or not app_secret:
+async def validate_agent_secret(secret: str | None) -> SysAppCredential | None:
+    """Validate a single agent secret (Bearer token) against DB (with short TTL cache)."""
+    if not secret:
         return None
-    cached = _auth_cache.get(app_id)
+    app_id = app_id_from_secret(secret)
+    if app_id is None:
+        return None
+    cached = _auth_cache.get(secret)
     if cached and time_mod.time() - cached[0] < _AUTH_TTL:
         return cached[1]
     async with async_session_factory() as db:
@@ -56,14 +60,22 @@ async def validate_agent_credentials(app_id: str | None, app_secret: str | None)
         obj = SysAppCredential(**{k: getattr(cred, k) for k in (
             "id", "app_id", "app_secret_hash", "app_name", "description", "scopes",
             "rate_limit_per_minute", "is_active", "created_by")})
-        if not verify_password(app_secret, obj.app_secret_hash):
+        if not verify_password(secret, obj.app_secret_hash):
             return None
-    _auth_cache[app_id] = (time_mod.time(), obj)
+    _auth_cache[secret] = (time_mod.time(), obj)
     return obj
 
 
+def invalidate_agent_auth_cache() -> None:
+    """Drop cached agent secrets — called after credential rotate/toggle/delete."""
+    _auth_cache.clear()
+
+
 class MCPAuthMiddleware:
-    """ASGI middleware guarding /mcp and /sse with App credentials.
+    """ASGI middleware guarding /mcp and /sse with the single agent secret.
+
+    Standard single-secret mode: the client presents one opaque token via
+    `Authorization: Bearer <Agent Secret>`.
 
     Also normalizes the exact mount path (/mcp, /sse) to a trailing slash so
     the mounted sub-app's root route matches (Starlette quirk)."""
@@ -76,9 +88,9 @@ class MCPAuthMiddleware:
             await self.app(scope, receive, send)
             return
         headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])}
-        cred = await validate_agent_credentials(headers.get("x-app-id"), headers.get("x-app-secret"))
+        cred = await validate_agent_secret(bearer_secret(headers.get("authorization")))
         if cred is None:
-            body = '{"jsonrpc":"2.0","error":{"code":-32001,"message":"无效的 Agent 凭据（X-App-ID / X-App-Secret）"},"id":null}'.encode("utf-8")
+            body = '{"jsonrpc":"2.0","error":{"code":-32001,"message":"无效的 Agent 凭据（Authorization: Bearer <Agent Secret>）"},"id":null}'.encode("utf-8")
             await send({
                 "type": "http.response.start", "status": 401,
                 "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())],
@@ -605,7 +617,7 @@ async def research_push_to_supervision(issue_id: str, deadline: str) -> dict:
 
 @MCP.tool()
 async def knowledge_search(query: str, top_k: int = 5, category: str = "") -> dict:
-    """调取知识库语义检索（政策法规/制度规程/讲话汇编/成果档案），供公文草拟与规则判断引用。"""
+    """混合知识检索：优先 GBrainKG 演示环境语义检索（远程），自动合并本地政策文档关键词命中；每条含来源(source)与证据片段(evidence/snippet)。"""
     _require_scope("knowledge:read")
     from app.routers import knowledge as mod
     async with async_session_factory() as db:
@@ -826,12 +838,31 @@ async def research_query_topics(keyword: str = "", status: str = "", page_size: 
 
 @MCP.tool()
 async def knowledge_get_doc_detail(doc_id: str) -> dict:
-    """获取政策文件正文详情与元数据（PRD 4.9：公文草拟/规则判断时引用原文）。"""
+    """获取本地政策文件正文详情与元数据（source=local 的结果；GBrainKG 远程命中的证据片段已内联在检索结果 evidence 字段中）。"""
     _require_scope("knowledge:read")
     from app.routers import knowledge as mod
     async with async_session_factory() as db:
         res = await mod.get_document(doc_id, p=await _system_principal(), db=db)
         return res["data"]
+
+
+@MCP.tool()
+async def knowledge_gbrainkg_search(query: str, top_k: int = 8, kb_id: str = "") -> dict:
+    """直连 GBrainKG 知识中枢（演示环境 50003）语义/混合检索：返回分片级命中（chunks）与按文档聚合视图（documents）。"""
+    _require_scope("knowledge:read")
+    from app.routers import knowledge as mod
+    res = await mod.gbrainkg_search(q=query, top_k=top_k, kb_id=kb_id or None,
+                                    p=await _system_principal())
+    return res["data"]
+
+
+@MCP.tool()
+async def knowledge_gbrainkg_status() -> dict:
+    """探测 GBrainKG 知识中枢接入状态：可达性/模式/知识库清单/各库文档数（不可达时平台自动回退本地知识库）。"""
+    _require_scope("knowledge:read")
+    from app.services import gbrainkg
+    gbrainkg.invalidate_status_cache()
+    return await gbrainkg.probe()
 
 
 @MCP.tool()

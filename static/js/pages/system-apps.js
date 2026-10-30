@@ -2,7 +2,7 @@
    Layout: 4 KPI / 应用凭据表格 / MCP 客户端接入说明卡 / 创建凭据弹窗 + 凭据结果大弹窗（含 MCP 配置 JSON） */
 AppPages['/system/apps'] = {
   route: '/system/apps', title: 'Agent 接入与应用凭据', category: 'SYSTEM', primaryAction: '新建应用凭据', icon: 'bot',
-  subtitle: '为内外部应用、MCP 客户端等分配访问凭据，配置授权 Scopes 与限流配额，支持快速生成主流客户端的接入配置。',
+  subtitle: '为内外部应用、MCP 客户端等分配单一 Agent Secret（标准 Authorization: Bearer 鉴权），配置授权 Scopes 与限流配额，支持快速生成主流客户端的接入配置。',
   component: {
     data() {
       return {
@@ -119,15 +119,15 @@ AppPages['/system/apps'] = {
             agentcom: {
               type: 'streamable-http',
               url: this.mcpEndpoint + '/mcp',
-              headers: { 'X-App-ID': a.app_id, 'X-App-Secret': secret },
+              headers: { Authorization: 'Bearer ' + secret },
             },
           },
         }, null, 2);
       },
       openConfig(a) {
         this.cfgApp = a;
-        this.cfgJson = this.buildConfigJson(a, '<App Secret 创建或重置密钥时获取>');
-        this.cfgHeadersJson = JSON.stringify({ 'X-App-ID': a.app_id, 'X-App-Secret': '<App Secret>' }, null, 2);
+        this.cfgJson = this.buildConfigJson(a, '<Agent Secret 创建或重置密钥时获取>');
+        this.cfgHeadersJson = JSON.stringify({ Authorization: 'Bearer <Agent Secret>' }, null, 2);
       },
       closeConfig() { this.cfgApp = null; this.cfgJson = ''; this.cfgHeadersJson = ''; },
       async rotateApp(a) {
@@ -172,7 +172,7 @@ AppPages['/system/apps'] = {
       <div class="card">
         <div class="card-hd">
           <div class="t">应用凭据列表</div>
-          <span class="muted" style="font-size:12px">共 {{ apps.length }} 个应用 · App Secret 仅创建时展示一次</span>
+          <span class="muted" style="font-size:12px">共 {{ apps.length }} 个应用 · Agent Secret 仅创建时展示一次</span>
         </div>
         <div class="card-bd" style="padding-top:8px">
           <table class="table">
@@ -225,9 +225,9 @@ AppPages['/system/apps'] = {
         <div class="card-bd" style="display:grid; grid-template-columns: minmax(0,1fr) minmax(0,1.2fr); gap:20px">
           <div>
             <div class="mcp-step" v-for="(s, i) in [
-                { t: '创建应用凭据', d: '点击右上角「新建应用凭据」，生成 App ID 与 App Secret（仅展示一次）。' },
+                { t: '创建应用凭据', d: '点击右上角「新建应用凭据」，生成单一 Agent Secret（仅展示一次，无需 App ID）。' },
                 { t: '配置 MCP 客户端', d: '将生成的 mcpServers 配置 JSON 写入客户端配置文件（如 claude_desktop_config.json）。' },
-                { t: '携带鉴权头调用', d: '所有请求需携带 X-App-ID 与 X-App-Secret 两个请求头完成鉴权。' },
+                { t: '携带鉴权头调用', d: '所有请求通过标准 Authorization: Bearer <Agent Secret> 单一鉴权头完成认证。' },
                 { t: '验证连通性', d: '客户端工具列表中出现 AgentCom 工具即代表接入成功。' },
               ]" :key="i">
               <span class="mcp-step-no">{{ i + 1 }}</span>
@@ -238,14 +238,13 @@ AppPages['/system/apps'] = {
             <div class="desc-list" style="grid-template-columns: 130px 1fr; row-gap:10px">
               <span class="k">Streamable HTTP</span><span class="mono strong">{{ mcpEndpoint }}/mcp <span class="tag tag-green" style="margin-left:4px">推荐</span></span>
               <span class="k">SSE 兼容端点</span><span class="mono muted">{{ mcpEndpoint }}/sse</span>
-              <span class="k">鉴权请求头 1</span><span class="mono">X-App-ID: &lt;App ID&gt;</span>
-              <span class="k">鉴权请求头 2</span><span class="mono">X-App-Secret: &lt;App Secret&gt;</span>
+              <span class="k">鉴权方式</span><span class="mono">Authorization: Bearer &lt;Agent Secret&gt; <span class="tag tag-blue" style="margin-left:4px">单 Secret</span></span>
               <span class="k">限流策略</span><span>按凭据维度限制每分钟请求数，超限返回 429</span>
               <span class="k">权限控制</span><span>Scopes 与接口权限串（模块:实体:动作）自动匹配，最小授权原则</span>
             </div>
             <div class="cfg-foot amber" style="margin-top:14px">
               <ic name="shield-alert" size="14" style="margin-top:2px"></ic>
-              <span>请妥善保管 App Secret，泄露后请立即停用对应凭据并重新创建。</span>
+              <span>请妥善保管 Agent Secret，泄露后请立即停用对应凭据并重新创建。</span>
             </div>
           </div>
         </div>
@@ -288,6 +287,7 @@ AppPages['/system/apps'] = {
           <code class="cred-val">{{ cfgApp.app_id }}</code>
           <button class="btn btn-ghost btn-sm" @click="copyText(cfgApp.app_id)"><ic name="copy" size="12"></ic>复制</button>
         </div>
+        <div class="cfg-help" style="margin:0 0 10px"><ic name="info" size="13"></ic> App ID 仅用于管理端识别与审计，客户端接入只需一个 Agent Secret。</div>
         <div class="cred-row">
           <span class="cred-k">接入端点</span>
           <code class="cred-val">{{ mcpEndpoint }}/mcp</code>
@@ -304,7 +304,7 @@ AppPages['/system/apps'] = {
         <div class="code-block">{{ cfgJson }}</div>
         <div class="cfg-help" style="margin-top:8px">
           <ic name="info" size="13"></ic>
-          App Secret 创建时仅展示一次，配置中已以占位符标注。如密钥遗失，点击列表「重置密钥」获取新密钥与完整配置。
+          Agent Secret 创建时仅展示一次，配置中已以占位符标注。如密钥遗失，点击列表「重置密钥」获取新密钥与完整配置。
           也可改用 SSE 端点 {{ mcpEndpoint }}/sse（将 type 改为 sse、url 改为该地址）。
         </div>
         <template #footer>
@@ -317,15 +317,10 @@ AppPages['/system/apps'] = {
       <Modal title="凭据创建成功" width="680px" v-if="credResult" @close="closeCred">
         <div class="cfg-foot amber" style="margin:0 0 14px">
           <ic name="alert-triangle" size="15" style="margin-top:2px"></ic>
-          <span><b>App Secret 仅此一次展示</b>，关闭弹窗后无法再次查看，请立即复制保存。</span>
+          <span><b>Agent Secret 仅此一次展示</b>，关闭弹窗后无法再次查看，请立即复制保存。</span>
         </div>
         <div class="cred-row">
-          <span class="cred-k">App ID</span>
-          <code class="cred-val">{{ credResult.app_id }}</code>
-          <button class="btn btn-ghost btn-sm" @click="copyText(credResult.app_id)"><ic name="copy" size="12"></ic>复制</button>
-        </div>
-        <div class="cred-row">
-          <span class="cred-k">App Secret</span>
+          <span class="cred-k">Agent Secret</span>
           <code class="cred-val">{{ showSecret ? credResult.app_secret : '•'.repeat(24) }}</code>
           <button class="btn btn-ghost btn-sm" @click="showSecret = !showSecret"><ic :name="showSecret ? 'eye-off' : 'eye'" size="12"></ic>{{ showSecret ? '隐藏' : '显示' }}</button>
           <button class="btn btn-ghost btn-sm" @click="copyText(credResult.app_secret)"><ic name="copy" size="12"></ic>复制</button>

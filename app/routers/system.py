@@ -493,12 +493,11 @@ async def list_apps(p: Principal = Depends(require_perms("system:app:list")), db
 
 @router.post("/apps")
 async def create_app(body: dict, p: Principal = Depends(require_perms("system:app:add")), db: AsyncSession = Depends(get_db)):
-    import secrets
+    from app.core.agent_token import generate_agent_credential
 
     if not body.get("app_name"):
         raise ApiError(400, "应用名称不能为空")
-    app_id = f"agentcom-{secrets.token_hex(4)}"
-    app_secret = f"sk-{secrets.token_hex(20)}"
+    app_id, app_secret = generate_agent_credential()
     cred = SysAppCredential(
         app_id=app_id, app_secret_hash=hash_password(app_secret),
         app_name=body["app_name"], description=body.get("description"),
@@ -516,7 +515,7 @@ async def create_app(body: dict, p: Principal = Depends(require_perms("system:ap
                 "agentcom": {
                     "type": "streamable-http",
                     "url": "http://localhost:8009/mcp",
-                    "headers": {"X-App-ID": app_id, "X-App-Secret": app_secret},
+                    "headers": {"Authorization": f"Bearer {app_secret}"},
                 }
             }
         },
@@ -525,24 +524,33 @@ async def create_app(body: dict, p: Principal = Depends(require_perms("system:ap
 
 @router.put("/apps/{id}/toggle")
 async def toggle_app(id: str, p: Principal = Depends(require_perms("system:app:edit")), db: AsyncSession = Depends(get_db)):
+    from app.mcp.server import invalidate_agent_auth_cache
+
     cred = await db.get(SysAppCredential, uuid.UUID(id))
     if not cred:
         raise ApiError(404, "凭据不存在")
     cred.is_active = not cred.is_active
+    invalidate_agent_auth_cache()
     return ok({"is_active": cred.is_active}, "状态已切换")
 
 
 @router.put("/apps/{id}/rotate")
 async def rotate_app_secret(id: str, p: Principal = Depends(require_perms("system:app:edit")), db: AsyncSession = Depends(get_db)):
-    """重置 App Secret（旧密钥立即失效），新密钥仅本次响应展示一次。"""
-    import secrets
+    """重置 Agent Secret（旧密钥立即失效），新密钥仅本次响应展示一次。"""
+    from app.core.agent_token import agent_secret_for_key, key_for_app_id, new_agent_key
+    from app.mcp.server import invalidate_agent_auth_cache
 
     cred = await db.get(SysAppCredential, uuid.UUID(id))
     if not cred:
         raise ApiError(404, "凭据不存在")
-    app_secret = f"sk-{secrets.token_hex(20)}"
+    key = key_for_app_id(cred.app_id)
+    if key is None:  # legacy-format id: rotate it into the token-derivable format
+        key = new_agent_key()
+        cred.app_id = f"agentcom-{key}"
+    app_secret = agent_secret_for_key(key)
     cred.app_secret_hash = hash_password(app_secret)
     cred.is_active = True
+    invalidate_agent_auth_cache()
     await db.flush()
     return ok({
         "id": str(cred.id), "app_id": cred.app_id, "app_secret": app_secret,
@@ -552,7 +560,7 @@ async def rotate_app_secret(id: str, p: Principal = Depends(require_perms("syste
                 "agentcom": {
                     "type": "streamable-http",
                     "url": "http://localhost:8009/mcp",
-                    "headers": {"X-App-ID": cred.app_id, "X-App-Secret": app_secret},
+                    "headers": {"Authorization": f"Bearer {app_secret}"},
                 }
             }
         },
@@ -561,8 +569,11 @@ async def rotate_app_secret(id: str, p: Principal = Depends(require_perms("syste
 
 @router.delete("/apps/{id}")
 async def delete_app(id: str, p: Principal = Depends(require_perms("system:app:del")), db: AsyncSession = Depends(get_db)):
+    from app.mcp.server import invalidate_agent_auth_cache
+
     cred = await db.get(SysAppCredential, uuid.UUID(id))
     if not cred:
         raise ApiError(404, "凭据不存在")
     await db.delete(cred)
+    invalidate_agent_auth_cache()
     return ok(None, "删除成功")

@@ -64,7 +64,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"], allow_credentials=True,
-        allow_methods=["*"], allow_headers=["*", "X-App-ID", "X-App-Secret", "Authorization"],
+        allow_methods=["*"], allow_headers=["*"],
         expose_headers=["*"],
     )
 
@@ -88,7 +88,8 @@ def create_app() -> FastAPI:
     async def healthz():
         return {"status": "ok", "service": "agentcom", "port": settings.port}
 
-    # MCP transports (streamable HTTP + legacy SSE), guarded by agent credentials.
+    # MCP transports (streamable HTTP + legacy SSE), guarded by the single
+    # agent secret (Authorization: Bearer).
     # Registered as root-level ASGI routes: the sub-apps define /mcp, /sse and
     # /messages/ internally (Mount would strip prefixes and break exact matches).
     from starlette.routing import Route

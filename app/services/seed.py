@@ -22,6 +22,10 @@ from app.models import (
 from sqlalchemy.dialects.postgresql import TSRANGE
 from sqlalchemy.dialects.postgresql.ranges import Range
 
+# 内置演示凭据（标准单 Secret 模式：Authorization: Bearer <DEMO_AGENT_SECRET>）
+DEMO_APP_ID = "agentcom-d3adb33f"
+DEMO_AGENT_SECRET = "sk-d3adb33f0123456789abcdef0123456789abcdef01234567"
+
 PAGES = [
     # (top_category, module_name, [(path, title, icon, perms)])  path 为页面路由
     ("PORTAL", "综合门户", [
@@ -785,8 +789,8 @@ async def _seed(db: AsyncSession):
 
     # ---------- agent credential ----------
     db.add(SysAppCredential(
-        app_id="agentcom-demo", app_secret_hash=hash_password("agentcom-demo-secret-2026"),
-        app_name="演示智能体", description="内置演示凭据，scopes=*，可用于 MCP 工具联调",
+        app_id=DEMO_APP_ID, app_secret_hash=hash_password(DEMO_AGENT_SECRET),
+        app_name="演示智能体", description="内置演示凭据（单 Secret，scopes=*），可用于 MCP 工具联调",
         scopes="*", rate_limit_per_minute=600, created_by="admin",
     ))
     await db.flush()

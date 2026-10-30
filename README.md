@@ -32,6 +32,7 @@ python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8009
 ```
 
 - Web UI：http://localhost:8009/
+- 知识库直连：智慧知识模块已对接 GBrainKG 演示环境（`http://150.158.137.151:50003` Open-API，凭据在 `.env` 的 `GBRAINKG_*`），检索为「远程语义 + 本地关键词」混合模式，远程不可达时自动回退本地库
 - OpenAPI 文档：http://localhost:8009/docs
 - 健康检查：http://localhost:8009/healthz
 
@@ -55,13 +56,12 @@ DATABASE_URL=postgresql+asyncpg://meetmanager:meetmanager@localhost:5434/agentco
 
 ## Agent / MCP 接入
 
-平台在 `/mcp`（Streamable HTTP）与 `/sse`（SSE）暴露 **66 个 MCP 工具**，按使用者角色全覆盖：管理层看板类（全局总览/督办形势/考勤汇总/资产家底/车队费用/调研整改/维保预警）、个人自助类（我的待办/假期余额/申请进度/订会议室/查通讯录/查制度）、专项操作类（安保核验/车队调度/督办催办销号/调研转办）与系统审计类，凭据鉴权（Header：`X-App-ID` / `X-App-Secret`）+ 细粒度 Scopes。
+平台在 `/mcp`（Streamable HTTP）与 `/sse`（SSE）暴露 **68 个 MCP 工具**，按使用者角色全覆盖：管理层看板类（全局总览/督办形势/考勤汇总/资产家底/车队费用/调研整改/维保预警）、个人自助类（我的待办/假期余额/申请进度/订会议室/查通讯录/查制度）、专项操作类（安保核验/车队调度/督办催办销号/调研转办）与系统审计类。鉴权为**标准单 Secret 模式**：客户端只需配置一个令牌，经标准 `Authorization: Bearer <Agent Secret>` 头认证 + 细粒度 Scopes（OpenAPI `/api` 的 Agent 访问同样使用该 Bearer 令牌）。
 
-1. 在【系统管理 → Agent 接入与应用凭据】创建凭据（或使用内置演示凭据）：
+1. 在【系统管理 → Agent 接入与应用凭据】创建凭据（或使用内置演示凭据，Secret 仅展示一次）：
 
 ```
-X-App-ID: agentcom-demo
-X-App-Secret: agentcom-demo-secret-2026
+Authorization: Bearer sk-d3adb33f0123456789abcdef0123456789abcdef01234567
 ```
 
 2. 在 Claude Desktop / Cursor / Windsurf 等智能体工具的 MCP 配置中加入：
@@ -73,8 +73,7 @@ X-App-Secret: agentcom-demo-secret-2026
       "type": "streamable-http",
       "url": "http://localhost:8009/mcp",
       "headers": {
-        "X-App-ID": "agentcom-demo",
-        "X-App-Secret": "agentcom-demo-secret-2026"
+        "Authorization": "Bearer sk-d3adb33f0123456789abcdef0123456789abcdef01234567"
       }
     }
   }
@@ -86,7 +85,7 @@ X-App-Secret: agentcom-demo-secret-2026
 ## 测试
 
 ```bash
-python3 -m pytest tests/ -q          # 97 项：RBAC/数据范围、十大模块业务闭环、MCP 协议与工具
+python3 -m pytest tests/ -q          # 98 项：RBAC/数据范围、十大模块业务闭环、MCP 协议与工具
 ```
 
 ## 架构
@@ -100,7 +99,7 @@ app/
   models/            # SQLAlchemy 2.0 模型（若依 RBAC + 十域业务 + 扩展）
   routers/           # 12 个业务路由（160+ REST 端点，统一 {code,msg} 包裹）
   core/audit.py      # 写操作审计中间件（等保三级）
-  mcp/server.py      # MCP 2.2.0 Server（30 工具 + 凭据中间件）
+  mcp/server.py      # MCP 2.2.0 Server（68 工具 + 单 Secret Bearer 鉴权中间件）
   services/seed.py   # 演示数据种子（组织/用户/菜单/字典/全业务样例）
 static/
   index.html         # SPA 入口

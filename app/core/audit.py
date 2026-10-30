@@ -38,7 +38,9 @@ class AuditMiddleware:
         # capture identity headers BEFORE app runs (scope headers are mutable)
         headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])}
         auth = headers.get("authorization", "")
-        app_id = headers.get("x-app-id", "")
+        from app.core.agent_token import app_id_from_secret, bearer_secret
+        agent_token = bearer_secret(auth) or ""
+        app_id = app_id_from_secret(agent_token) or ""
 
         try:
             await self.app(scope, receive, send_wrapper)

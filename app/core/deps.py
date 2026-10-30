@@ -1,4 +1,4 @@
-"""FastAPI dependencies: dual-mode auth (human JWT / Agent App credential),
+"""FastAPI dependencies: dual-mode auth (human JWT / Agent single-secret token),
 RuoYi permission checks and 5-level data-scope filtering."""
 
 import uuid
@@ -11,6 +11,7 @@ from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ApiError
+from app.core.agent_token import app_id_from_secret
 from app.core.security import decode_token
 from app.database import get_db
 from app.models.system import (
@@ -149,24 +150,27 @@ async def get_principal(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> Principal:
-    """Resolve caller identity from Bearer JWT or X-App-ID/X-App-Secret headers."""
-    app_id = request.headers.get("X-App-ID")
-    app_secret = request.headers.get("X-App-Secret")
-    if app_id and app_secret:
+    """Resolve caller identity from a single Bearer token.
+
+    Standard single-secret mode: agent tokens are opaque `sk-…` secrets
+    (validated against sys_app_credential); everything else is a human JWT."""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise ApiError(401, "未登录或身份凭据缺失")
+    token = auth[7:].strip()
+    app_id = app_id_from_secret(token)
+    if app_id:
         cred = (await db.execute(
             select(SysAppCredential).where(SysAppCredential.app_id == app_id, SysAppCredential.is_active.is_(True))
         )).scalar_one_or_none()
-        if not cred or not verify_password(app_secret, cred.app_secret_hash):
+        if not cred or not verify_password(token, cred.app_secret_hash):
             raise ApiError(401, "Agent 凭据无效或已停用")
         p = Principal(auth_kind="agent", agent=cred, data_scope="1")
         p.scopes = {s.strip() for s in (cred.scopes or "*").split(",") if s.strip()}
         return p
 
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        raise ApiError(401, "未登录或身份凭据缺失")
     try:
-        payload = decode_token(auth[7:])
+        payload = decode_token(token)
     except pyjwt.PyJWTError:
         raise ApiError(401, "登录状态已过期，请重新登录")
     if payload.get("typ") != "user":

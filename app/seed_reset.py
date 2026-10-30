@@ -8,7 +8,7 @@ if str(ROOT) not in sys.path:
 
 async def main(keep: bool):
     from app.database import async_session_factory, init_db
-    from app.services.seed import _seed, conn_run_drop
+    from app.services.seed import DEMO_AGENT_SECRET, _seed, conn_run_drop
 
     if not keep:
         print("Dropping & recreating schema ...")
@@ -19,7 +19,7 @@ async def main(keep: bool):
     async with async_session_factory() as db:
         async with db.begin():
             await _seed(db)
-    print("Seed complete: admin/admin123, zhangming/admin123, agent MCP 凭据 agentcom-demo / agentcom-demo-secret-2026")
+    print("Seed complete: admin/admin123, zhangming/admin123, agent MCP 单 Secret: " + DEMO_AGENT_SECRET)
 
 
 if __name__ == "__main__":
