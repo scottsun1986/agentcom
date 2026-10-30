@@ -256,8 +256,8 @@ async def assistant(body: dict, p: Principal = Depends(require_auth), db: AsyncS
         actions.append({"tool": "supervision_trigger_auto_urging", "summary": f"巡检完成：黄码{yellow}、红码{red}"})
     elif any(k in q for k in ("会议", "会议室", "议程")):
         bookings = (await db.execute(
-            select(ConfBooking).where(ConfBooking.during.overlaps(Range(day_start, day_end)), ConfBooking.status != "CANCELLED")
-        ).order_by(ConfBooking.during)).scalars().all()
+            select(ConfBooking).where(ConfBooking.during.overlaps(Range(day_start, day_end)), ConfBooking.status != "CANCELLED").order_by(ConfBooking.during)
+        )).scalars().all()
         lines = [f"{b.during.lower.astimezone(BUSINESS_TZ):%H:%M}-{b.during.upper.astimezone(BUSINESS_TZ):%H:%M} {b.title}" for b in bookings[:6]]
         reply = "今日会议安排：\n" + ("\n".join(lines) if lines else "今日暂无会议")
         actions.append({"tool": "meeting_book_room", "summary": "如需预订可告知时间与人数"})
