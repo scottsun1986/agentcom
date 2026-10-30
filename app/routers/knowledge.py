@@ -17,6 +17,7 @@ from app.core.errors import ApiError
 from app.core.resp import ok, page
 from app.database import get_db
 from app.models.extras import KnbDocument
+from app.services import gbrainkg
 
 router = APIRouter(prefix="/api/knowledge", tags=["智能知识库"])
 
@@ -86,6 +87,7 @@ async def knowledge_stats(
     hot = (await db.execute(
         select(KnbDocument).order_by(KnbDocument.view_count.desc()).limit(5)
     )).scalars().all()
+    remote = await gbrainkg.probe()
     return ok({
         "total": total,
         "categories": [{"category": c, "count": n} for c, n in known.items()],
@@ -94,6 +96,13 @@ async def knowledge_stats(
             "doc_id": str(d.doc_id), "title": d.title,
             "category": d.category, "view_count": d.view_count,
         } for d in hot],
+        "gbrainkg": {
+            "reachable": remote.get("reachable", False),
+            "mode": remote.get("mode"),
+            "kb_count": remote.get("kb_count", 0),
+            "document_count": remote.get("document_count", 0),
+            "knowledge_bases": remote.get("knowledge_bases", []),
+        },
     })
 
 
@@ -221,10 +230,32 @@ async def search_documents(
     db: AsyncSession = Depends(get_db),
     q: str = "", top_k: int = 10, category: str | None = None,
 ):
-    """关键词打分检索：title 命中*5 + keywords 命中*3 + content 命中*1；无命中返回空列表。"""
+    """混合检索：GBrainKG 语义检索（远程优先）+ 本地关键词打分（title*5/keywords*3/content*1），按来源去重合并。"""
     q_lower = (q or "").strip().lower()
     if not q_lower:
         return ok([])
+
+    # —— 远程语义检索（失败静默跳过，不影响本地结果） ——
+    merged: list[dict] = []
+    seen_titles: set[str] = set()
+    remote_hits = await gbrainkg.search(q, top_k=top_k)
+    for hit in remote_hits:
+        title_key = (hit.get("title") or "").strip().lower()
+        if title_key and title_key in seen_titles:
+            continue
+        seen_titles.add(title_key)
+        merged.append({
+            "doc_id": hit.get("doc_id"),
+            "title": hit.get("title"),
+            "category": "GBrainKG",
+            "score": hit.get("score"),
+            "snippet": (hit.get("evidence") or "")[:200],
+            "publish_date": None,
+            "source": "gbrainkg",
+            "kb_id": hit.get("kb_id"),
+            "page_no": hit.get("page_no"),
+            "evidence": hit.get("evidence"),
+        })
     stmt = select(KnbDocument)
     if category:
         stmt = stmt.where(KnbDocument.category == category)
@@ -249,6 +280,10 @@ async def search_documents(
             snippet = _make_snippet(d.keywords, q_lower)
         else:
             snippet = _make_snippet(d.title, q_lower)
+        title_key = (d.title or "").strip().lower()
+        if title_key and title_key in seen_titles:
+            continue
+        seen_titles.add(title_key)
         results.append({
             "doc_id": str(d.doc_id),
             "title": d.title,
@@ -256,10 +291,12 @@ async def search_documents(
             "score": score,
             "snippet": snippet,
             "publish_date": d.publish_date.isoformat() if d.publish_date else None,
+            "source": "local",
         })
     results.sort(key=lambda x: (-x["score"], x["title"]))
     top_k = top_k if top_k and top_k > 0 else 10
-    return ok(results[:top_k])
+    merged.extend(results)
+    return ok(merged[:top_k])
 
 
 # ---------------- 知识图谱切片 ----------------
@@ -297,22 +334,72 @@ async def knowledge_graph(
         nodes.append({"id": f"cat:{cat}", "label": cat, "type": "category"})
     for k in sorted(top_kws):
         nodes.append({"id": f"kw:{k}", "label": k, "type": "keyword"})
-    return ok({"nodes": nodes, "edges": edges})
+
+    # —— GBrainKG 远程知识库节点（可达时挂载，kb→命中文档） ——
+    remote = await gbrainkg.probe()
+    if remote.get("reachable"):
+        for kb in remote.get("knowledge_bases") or []:
+            kb_id = f"gkb:{kb.get('id')}"
+            nodes.append({"id": kb_id, "label": f"{kb.get('name')}（{kb.get('document_count', 0)}篇）", "type": "remote_kb"})
+            edges.append({"source": "gbrainkg", "target": kb_id})
+        nodes.append({"id": "gbrainkg", "label": "GBrainKG 知识中枢", "type": "hub"})
+    return ok({"nodes": nodes, "edges": edges, "gbrainkg_reachable": bool(remote.get("reachable"))})
 
 
-# ---------------- GBrainKG 连通性探测 ----------------
+# ---------------- GBrainKG 远程知识库（Open-API 对接） ----------------
 
 @router.post("/sync/gbrainkg")
 async def sync_gbrainkg(p: Principal = Depends(require_perms("knowledge:search:list"))):
-    """探测 GBrainKG 服务可达性：可达用 hybrid 混合检索，不可达静默回退 local，绝不抛错。"""
-    url = get_settings().gbrainkg_url
-    reachable = False
-    try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            resp = await client.get(url)
-        reachable = resp.status_code < 500
-    except Exception:  # 连接拒绝/超时/DNS 失败等一律视为不可达
-        reachable = False
-    if reachable:
-        return ok({"reachable": True, "mode": "hybrid"}, "GBrainKG 连接正常")
-    return ok({"reachable": False, "mode": "local"}, "GBrainKG 不可达，已切换本地知识库模式")
+    """连通性探测（含凭据校验与知识库清单）；可达用 hybrid 混合检索，不可达静默回退 local，绝不抛错。"""
+    gbrainkg.invalidate_status_cache()
+    remote = await gbrainkg.probe()
+    if remote.get("reachable"):
+        return ok(remote, f"GBrainKG 连接正常（{remote.get('kb_count', 0)} 个知识库 / {remote.get('document_count', 0)} 篇文档）")
+    return ok(remote, "GBrainKG 不可达，已切换本地知识库模式")
+
+
+@router.get("/gbrainkg/status")
+async def gbrainkg_status(p: Principal = Depends(require_perms("knowledge:doc:list"))):
+    """GBrainKG 接入状态：可达性/模式/知识库清单/文档数。"""
+    gbrainkg.invalidate_status_cache()
+    return ok(await gbrainkg.probe())
+
+
+@router.get("/gbrainkg/kbs")
+async def gbrainkg_kbs(p: Principal = Depends(require_perms("knowledge:doc:list"))):
+    """GBrainKG 知识库列表（含各库文档数）。"""
+    return ok(await gbrainkg.list_knowledge_bases())
+
+
+@router.get("/gbrainkg/search")
+async def gbrainkg_search(
+    q: str, top_k: int = 8, kb_id: str | None = None,
+    p: Principal = Depends(require_perms("knowledge:search:list")),
+):
+    """直连 GBrainKG 语义/混合检索（分片级命中 + 按文档聚合视图）。"""
+    q = (q or "").strip()
+    if not q:
+        raise ApiError(400, "检索关键词不能为空")
+    kb_ids = [kb_id] if kb_id else None
+    hits = await gbrainkg.search(q, top_k=top_k, kb_ids=kb_ids)
+    return ok({
+        "query": q,
+        "total": len(hits),
+        "chunks": hits,
+        "documents": gbrainkg.aggregate_documents(hits),
+    })
+
+
+@router.get("/gbrainkg/documents")
+async def gbrainkg_documents(
+    keyword: str = "", page_size: int = 20,
+    p: Principal = Depends(require_perms("knowledge:doc:list")),
+):
+    """GBrainKG 文档视图：以关键词探查远程库（空关键词时用常见政务词巡库），按文档聚合并分页。"""
+    probe_terms = (keyword or "").strip() or "规定 办法 通知 方案 制度"
+    hits: list[dict] = []
+    for term in probe_terms.split()[:4]:
+        hits.extend(await gbrainkg.search(term, top_k=12))
+    docs = gbrainkg.aggregate_documents(hits)
+    size = max(1, min(int(page_size), 50))
+    return ok({"total": len(docs), "items": docs[:size], "source": "gbrainkg"})

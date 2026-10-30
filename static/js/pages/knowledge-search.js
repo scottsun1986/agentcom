@@ -72,7 +72,7 @@
           } catch (e) { /* 右栏辅助数据，静默失败 */ }
         },
         catTag(c) {
-          return { '政策法规': 'tag-red', '制度规程': 'tag-blue', '讲话汇编': 'tag-amber', '成果档案': 'tag-teal' }[c] || 'tag-gray';
+          return { '政策法规': 'tag-red', '制度规程': 'tag-blue', '讲话汇编': 'tag-amber', '成果档案': 'tag-teal', 'GBrainKG': 'tag-teal' }[c] || 'tag-gray';
         },
         catCls(c) {
           return { '政策法规': 'ico-red', '制度规程': 'ico-blue', '讲话汇编': 'ico-amber', '成果档案': 'ico-teal' }[c] || 'ico-blue';
@@ -173,6 +173,7 @@
                       <div class="ks-title" v-html="hl(r.title)"></div>
                       <div class="ks-snippet" v-html="hl(r.snippet)"></div>
                       <div class="ks-meta">
+                        <span v-if="r.source === 'gbrainkg'" class="tag" style="background:#EEF6FF;color:#0B5FFF;border:1px solid #BBD9FF"><ic name="sparkles" size="11"></ic> GBrainKG 语义命中</span>
                         <span :class="['tag', catTag(r.category)]">{{ r.category }}</span>
                         <span class="muted" v-if="enrich[r.doc_id] && enrich[r.doc_id].source_org"><ic name="building" size="12"></ic> {{ enrich[r.doc_id].source_org }}</span>
                         <span class="muted" v-if="enrich[r.doc_id] && enrich[r.doc_id].doc_no"><ic name="hash" size="12"></ic> {{ enrich[r.doc_id].doc_no }}</span>

@@ -9,6 +9,8 @@
     component: {
       data() {
         return {
+        tab: 'local', // local=本地文档库 | gbrainkg=GBrainKG 知识中枢
+        kgLoading: false, kgItems: [], kgTotal: 0, kgKeyword: '', kgProbed: null,
           loading: true,
           rows: [],
           total: 0,
@@ -61,6 +63,25 @@
         if (this._onHash) window.removeEventListener('hashchange', this._onHash);
       },
       methods: {
+      async loadKg(force) {
+        if (this.kgItems.length && !force && this.kgKeyword === this._kgLoadedKw) return;
+        this.kgLoading = true;
+        try {
+          const d = await api.get('/api/knowledge/gbrainkg/documents', { keyword: this.kgKeyword || '', page_size: 30 });
+          this.kgItems = d.items || [];
+          this.kgTotal = d.total || 0;
+          this._kgLoadedKw = this.kgKeyword;
+        } catch (e) { this.kgItems = []; this.kgTotal = 0; }
+        this.kgLoading = false;
+      },
+      async kgSearch() { await this.loadKg(true); },
+      setTab(t) { this.tab = t; if (t === 'gbrainkg' && !this.kgProbed) this.probeKg(); },
+      async probeKg() {
+        try {
+          this.kgProbed = await api.get('/api/knowledge/gbrainkg/status');
+        } catch (e) { this.kgProbed = { reachable: false }; }
+        if (this.tab === 'gbrainkg') await this.loadKg(true);
+      },
         async loadStats() {
           try {
             const d = await api.get('/api/knowledge/stats');
@@ -184,6 +205,42 @@
           <!-- right: documents table -->
           <div class="card" style="margin-top:0">
             <div class="card-bd">
+              <!-- source tabs: local / GBrainKG -->
+              <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px">
+                <span class="kd-tab" :class="{on: tab === 'local'}" @click="setTab('local')"><ic name="database" size="14"></ic> 本地文档库</span>
+                <span class="kd-tab" :class="{on: tab === 'gbrainkg'}" @click="setTab('gbrainkg')"><ic name="sparkles" size="14"></ic> GBrainKG 知识中枢
+                  <span v-if="kgProbed && kgProbed.reachable" class="tag tag-green" style="margin-left:4px">已连接</span>
+                  <span v-else-if="kgProbed" class="tag tag-gray" style="margin-left:4px">离线</span>
+                </span>
+              </div>
+
+              <!-- GBrainKG remote view -->
+              <div v-if="tab === 'gbrainkg'">
+                <div class="filters" style="margin-bottom:10px">
+                  <span class="f-label">探查词</span>
+                  <input class="input" style="width:240px" placeholder="输入关键词探查远程知识库" v-model="kgKeyword" @keyup.enter="kgSearch">
+                  <button class="btn btn-primary btn-sm" :disabled="kgLoading" @click="kgSearch"><ic :name="kgLoading ? 'loader-2' : 'search'" size="13"></ic> {{ kgLoading ? '检索中…' : '探查' }}</button>
+                  <span class="muted" style="margin-left:auto; font-size:12px" v-if="kgProbed">
+                    {{ kgProbed.reachable ? (kgProbed.base_url || '') + ' · ' + (kgProbed.kb_count || 0) + ' 个知识库 / ' + (kgProbed.document_count || 0) + ' 篇文档' : (kgProbed.reason || '服务不可达') }}
+                  </span>
+                </div>
+                <table class="table">
+                  <thead><tr><th>文档标题</th><th style="width:90px">所属库</th><th style="width:90px">命中分片</th><th style="width:100px">相关度</th><th>证据片段</th></tr></thead>
+                  <tbody>
+                    <tr v-for="d in kgItems" :key="(d.doc_id || '') + (d.title || '')">
+                      <td class="strong"><ic name="file-text" size="13" style="vertical-align:-2px; color:var(--teal)"></ic> {{ d.title }}</td>
+                      <td><span class="tag tag-teal">GBrainKG</span></td>
+                      <td class="num">{{ d.chunk_count || 1 }}</td>
+                      <td class="num">{{ d.score }}</td>
+                      <td class="muted" style="max-width:420px"><div class="ellipsis">{{ (d.evidence || '').slice(0, 120) }}</div></td>
+                    </tr>
+                    <tr v-if="!kgItems.length && !kgLoading"><td colspan="5"><div class="empty">{{ kgProbed && !kgProbed.reachable ? 'GBrainKG 服务不可达（已自动回退本地库，请稍后重试）' : '暂无探查结果，请更换关键词' }}</div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- local view (original) -->
+              <div v-else>
               <div class="filters" style="margin-bottom:0">
                 <span class="f-label">关键词</span>
                 <input class="input" style="width:210px" placeholder="标题 / 文号 / 关键词" v-model="filters.keyword" @keyup.enter="query">
@@ -235,6 +292,7 @@
                 <button v-for="p in pages()" :key="p" class="pg" :class="{on: p === pageNum}" @click="goPage(p)">{{ p }}</button>
                 <button class="pg" :disabled="pageNum >= pageCount" @click="goPage(pageNum + 1)">下一页</button>
               </div>
+              </div><!-- /local view -->
             </div>
           </div>
         </div>

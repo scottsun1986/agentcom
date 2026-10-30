@@ -49,8 +49,10 @@ class Settings(BaseSettings):
     mcp_server_name: str = "agentcom"
     mcp_server_version: str = "1.0.0"
 
-    # External integrations
-    gbrainkg_url: str = "http://localhost:3000"
+    # External integrations — GBrainKG (LLMWiki) demo deployment via Open-API
+    gbrainkg_url: str = "http://150.158.137.151:50003"
+    gbrainkg_app_id: str = ""
+    gbrainkg_app_secret: str = ""
 
 
 @lru_cache

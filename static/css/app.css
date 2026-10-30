@@ -1062,3 +1062,9 @@ mark.ks-hl { background: var(--red-weak); color: var(--red); font-weight: 600; p
 .cred-k { width: 86px; flex: none; color: var(--text-2); font-size: 13px; }
 .cred-val { flex: 1; min-width: 0; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; background: #F7FAFD; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cfg-input-row > .input:last-child { border-radius: 6px; }
+
+/* page: /knowledge/home GBrainKG rows */
+.kb-remote-row { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: #FAFCFE; }
+.kd-tab { display:inline-flex; align-items:center; gap:6px; padding:7px 14px; border:1px solid var(--line); border-radius:6px; cursor:pointer; font-size:13px; color:var(--text-2); background:#fff; }
+.kd-tab:hover { color:var(--primary); border-color:var(--primary); }
+.kd-tab.on { color:var(--primary); border-color:var(--primary); background:var(--primary-weak); font-weight:600; }

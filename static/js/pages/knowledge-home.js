@@ -101,9 +101,15 @@
               probed: true,
               reachable: !!d.reachable,
               mode: d.mode || '—',
+              kbCount: d.kb_count || 0,
+              docCount: d.document_count || 0,
+              kbs: (d.knowledge_bases || []).slice(0, 4),
+              reason: d.reason || '',
               probedAt: pad(now.getHours()) + ':' + pad(now.getMinutes()),
             };
-            this.$root.toast(d.reachable ? 'GBrainKG 连接正常' : 'GBrainKG 不可达，已切换本地知识库模式', d.reachable ? 'ok' : 'warn');
+            this.$root.toast(d.reachable
+              ? 'GBrainKG 连接正常（' + (d.kb_count || 0) + ' 个知识库 / ' + (d.document_count || 0) + ' 篇文档）'
+              : 'GBrainKG 不可达，已切换本地知识库模式', d.reachable ? 'ok' : 'warn');
           } catch (e) { /* toast already shown */ }
           this.probing = false;
         },
@@ -187,9 +193,16 @@
               </div>
               <div class="card-bd">
                 <div class="desc-list" style="grid-template-columns:84px 1fr">
-                  <span class="k muted">检索模式</span><span class="strong">{{ kg.mode }}</span>
+                  <span class="k muted">检索模式</span><span class="strong">{{ kg.mode === 'hybrid' ? 'hybrid（远程语义 + 本地关键词）' : kg.mode }}</span>
+                  <span class="k muted">知识库</span><span class="strong">{{ kg.reachable ? (kg.kbCount + ' 个 / ' + kg.docCount + ' 篇文档') : (kg.reason || '—') }}</span>
                   <span class="k muted">上次探测</span><span>{{ kg.probedAt || '—' }}</span>
-                  <span class="k muted">回退策略</span><span>不可达时自动回退本地知识库（local）</span>
+                </div>
+                <div v-if="kg.reachable && kg.kbs.length" style="margin-top:10px; display:flex; flex-direction:column; gap:6px">
+                  <div v-for="kb in kg.kbs" :key="kb.id" class="kb-remote-row">
+                    <ic name="database" size="14" style="color:var(--teal)"></ic>
+                    <span class="strong" style="flex:1; font-size:12.5px">{{ kb.name }}</span>
+                    <span class="tag tag-teal">{{ kb.document_count }} 篇</span>
+                  </div>
                 </div>
                 <button class="btn btn-primary mt12" style="width:100%; justify-content:center" :disabled="probing" @click="probeKg">
                   <ic :name="probing ? 'loader-2' : 'refresh-cw'" size="14"></ic> {{ probing ? '探测中…' : '探测连接' }}
