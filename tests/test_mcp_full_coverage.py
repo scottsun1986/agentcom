@@ -2,6 +2,7 @@
 transport with real arguments, chained into business sequences."""
 
 import json as _json
+import uuid
 from datetime import datetime, timedelta
 from itertools import count
 
@@ -64,17 +65,18 @@ async def test_all_45_tools_full_coverage(client, admin_headers, mcp_ready):
         assert res["result"]["serverInfo"]["name"] == "agentcom"
         res2 = await jsonrpc(client, "tools/list", {}, id_=2)
         names = {t["name"] for t in res2["result"]["tools"]}
-        assert len(names) == 66, f"expected 66 tools, got {len(names)}"
+        assert len(names) == 68, f"expected 68 tools, got {len(names)}"
 
         results = {}
         zhang = await _uid(client, admin_headers, "张明")
         zhou = await _uid(client, admin_headers, "周正安")
 
         # ============ 知识 ============
-        doc = await _call(client, "knowledge_search", {"query": "公务用车", "top_k": 2}, results)
+        doc = await _call(client, "knowledge_search", {"query": "公务用车", "top_k": 5}, results)
         doc_list = doc if isinstance(doc, list) else (doc.get("results") or doc.get("items") or [])
         assert doc_list, "knowledge_search should return hits"
-        doc_id = doc_list[0]["doc_id"]
+        local_hits = [h for h in doc_list if h.get("source") == "local"] or doc_list
+        doc_id = local_hits[0]["doc_id"]
         await _call(client, "knowledge_get_doc_detail", {"doc_id": doc_id}, results)
 
         # ============ 考勤 ============
@@ -212,13 +214,17 @@ async def test_all_45_tools_full_coverage(client, admin_headers, mcp_ready):
         await _call(client, "fleet_query_applications", {"status": "COMPLETED", "page_size": 5}, results)
 
         # ============ 调研（链式：立项→撞期→台账→查询→转督办） ============
+        from datetime import date as _date, timedelta as _td
+        _sd = str(_date.today() + _td(days=15))
+        _ed = str(_date.today() + _td(days=17))
+        _pt = f"MCP 专用测试点位甲-{uuid.uuid4().hex[:6]}"
         topic = await _call(client, "research_register_plan", {
             "title": "MCP 覆盖测试课题", "leader_name": "张明", "lead_dept_id": DEPT_IT,
-            "start_date": "2026-11-20", "end_date": "2026-11-22",
-            "route_points": ["MCP 专用测试点位甲", "MCP 专用测试点位乙"], "user_id": zhang}, results)
+            "start_date": _sd, "end_date": _ed,
+            "route_points": [_pt], "user_id": zhang}, results)
         tid = topic["topic_id"]
         conf = await _call(client, "research_check_conflicts", {
-            "route_points": ["XX区政务服务中心"], "start_date": "2026-10-02", "end_date": "2026-10-04"}, results)
+            "route_points": [_pt], "start_date": _sd, "end_date": _ed}, results)
         assert conf["has_conflict"] is True
         issue = await _call(client, "research_log_issue", {
             "topic_id": tid, "issue_title": "MCP 覆盖测试问题",
@@ -226,7 +232,8 @@ async def test_all_45_tools_full_coverage(client, admin_headers, mcp_ready):
         await _call(client, "research_query_issues", {"status": "LOGGED", "page_size": 5}, results)
         await _call(client, "research_query_topics", {"keyword": "MCP 覆盖", "page_size": 5}, results)
         pushed = await _call(client, "research_push_to_supervision", {
-            "issue_id": issue["issue_id"], "deadline": "2026-12-31"}, results)
+            "issue_id": issue["issue_id"],
+            "deadline": str(_date.today() + _td(days=45))}, results)
         assert pushed.get("supervision_no", "DB").startswith("DB")
 
         # ============ 角色化看板 / 个人中心（v1.3 新增 21 工具） ============
@@ -262,4 +269,9 @@ async def test_all_45_tools_full_coverage(client, admin_headers, mcp_ready):
         await _call(client, "system_query_logs", {"page_size": 5}, results)
 
         failed = {k: v for k, v in results.items() if v != "ok"}
-        assert not failed, f"tools failed: {failed}\ncalled: {len(results)}/66"
+        gb = await _call(client, "knowledge_gbrainkg_search", {"query": "测试", "top_k": 3}, results)
+        assert isinstance(gb, dict)
+        await _call(client, "knowledge_gbrainkg_status", {}, results)
+
+        failed = {k: v for k, v in results.items() if v != "ok"}
+        assert not failed, f"tools failed: {failed}\ncalled: {len(results)}/68"

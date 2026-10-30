@@ -2,12 +2,25 @@
 
 
 async def test_topic_conflict_detection(client, admin_headers):
-    """防撞期核心：与种子课题 DY-2026-006 同点位同日期应命中冲突。"""
+    """防撞期核心：自建两个课题占用同一点位与日期，后者必须命中冲突（动态未来日期，不依赖种子）。"""
+    import uuid as _uuid
+    from datetime import date, timedelta
+
+    point = f"冲突检测点位-{_uuid.uuid4().hex[:6]}"
+    d1 = str(date.today() + timedelta(days=15))
+    d2 = str(date.today() + timedelta(days=16))
+    r0 = await client.post("/api/research/topics", headers=admin_headers, json={
+        "title": "冲突检测占位课题", "leader_name": "测试队长",
+        "lead_dept_id": "00000000-0000-0000-0000-000000000010",
+        "start_date": d1, "end_date": d2,
+        "points": [{"point_name": point, "scheduled_date": d1}],
+    })
+    assert r0.status_code == 200, r0.text
     r = await client.post("/api/research/topics", headers=admin_headers, json={
         "title": "冲突检测测试课题", "leader_name": "测试队长",
         "lead_dept_id": "00000000-0000-0000-0000-000000000010",
-        "start_date": "2026-10-02", "end_date": "2026-10-03",
-        "points": [{"point_name": "XX区政务服务中心", "scheduled_date": "2026-10-02"}],
+        "start_date": d1, "end_date": d2,
+        "points": [{"point_name": point, "scheduled_date": d1}],
     })
     assert r.status_code == 200, r.text
     topic = r.json()["data"]
@@ -15,8 +28,22 @@ async def test_topic_conflict_detection(client, admin_headers):
 
 
 async def test_pure_conflict_check(client, admin_headers):
+    """纯冲突检测：先占位点再检测同点位（动态未来日期）。"""
+    import uuid as _uuid
+    from datetime import date, timedelta
+
+    point = f"纯冲突点位-{_uuid.uuid4().hex[:6]}"
+    d1 = str(date.today() + timedelta(days=20))
+    d3 = str(date.today() + timedelta(days=22))
+    r0 = await client.post("/api/research/topics", headers=admin_headers, json={
+        "title": "纯冲突占位课题", "leader_name": "测试队长",
+        "lead_dept_id": "00000000-0000-0000-0000-000000000010",
+        "start_date": d1, "end_date": d3,
+        "points": [{"point_name": point, "scheduled_date": d1}],
+    })
+    assert r0.status_code == 200, r0.text
     r = await client.post("/api/research/check-conflicts", headers=admin_headers, json={
-        "point_names": ["临江街道便民服务中心"], "start_date": "2026-10-02", "end_date": "2026-10-05",
+        "point_names": [point], "start_date": d1, "end_date": d3,
     })
     assert r.status_code == 200
     data = r.json()["data"]
@@ -95,11 +122,13 @@ async def test_sync_import(client, admin_headers):
 
 
 async def test_knowledge_search_and_graph(client, staff_headers):
-    r = await client.get("/api/knowledge/search?q=公务用车&top_k=3", headers=staff_headers)
+    r = await client.get("/api/knowledge/search?q=公务用车&top_k=5", headers=staff_headers)
     assert r.status_code == 200
     data = r.json()["data"]
     items = data if isinstance(data, list) else data.get("results", [])
-    assert items and "公务用车" in items[0]["title"] + (items[0].get("keywords") or "")
+    assert items, "hybrid search should return hits"
+    # 远程语义命中可排前，本地关键词命中必须存在
+    assert any("公务用车" in ((h.get("title") or "") + (h.get("snippet") or "")) for h in items)
     r2 = await client.get("/api/knowledge/graph", headers=staff_headers)
     g = r2.json()["data"]
     assert g["nodes"] and g["edges"]
@@ -169,8 +198,9 @@ async def test_system_roles_menus_dicts(client, admin_headers):
 
 
 async def test_system_apps_and_logs(client, admin_headers):
+    from app.services.seed import DEMO_APP_ID
     r = await client.get("/api/system/apps", headers=admin_headers)
-    assert any(x["app_id"] == "agentcom-demo" for x in r.json()["data"])
+    assert any(x["app_id"] == DEMO_APP_ID for x in r.json()["data"])
     r2 = await client.get("/api/system/logs", headers=admin_headers)
     assert r2.status_code == 200
     r3 = await client.get("/api/system/configs", headers=admin_headers)

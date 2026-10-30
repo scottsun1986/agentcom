@@ -60,7 +60,7 @@ async def test_agent_credential_auth(client, agent_headers):
 
 
 async def test_agent_credential_invalid(client):
-    r = await client.get("/api/supervision/tasks", headers={"X-App-ID": "agentcom-demo", "X-App-Secret": "wrong"})
+    r = await client.get("/api/supervision/tasks", headers={"Authorization": "Bearer sk-00000000" + "f" * 40})
     assert r.status_code == 401
 
 
@@ -69,9 +69,9 @@ async def test_agent_scope_enforcement(client, admin_headers):
     r = await client.post("/api/system/apps", json={"app_name": "只读考勤智能体", "scopes": "attendance:read"}, headers=admin_headers)
     assert r.status_code == 200
     data = r.json()["data"]
-    app_id, secret = data["app_id"], data["app_secret"]
+    secret = data["app_secret"]
     try:
-        h = {"X-App-ID": app_id, "X-App-Secret": secret}
+        h = {"Authorization": f"Bearer {secret}"}
         ok = await client.get("/api/attendance/records", headers=h)
         assert ok.status_code == 200
         denied = await client.get("/api/supervision/tasks", headers=h)

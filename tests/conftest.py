@@ -9,7 +9,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.database import async_session_factory
 from app.mcp.server import MCP
-from app.services.seed import _seed, conn_run_drop
+from app.services.seed import DEMO_AGENT_SECRET, _seed, conn_run_drop
 
 BASE = "http://testserver"
 
@@ -101,7 +101,8 @@ async def staff_headers(client):
     return await login(client, "lihua")
 
 
-AGENT_CRED = {"X-App-ID": "agentcom-demo", "X-App-Secret": "agentcom-demo-secret-2026"}
+# 标准单 Secret 模式：Authorization: Bearer <Agent Secret>
+AGENT_CRED = {"Authorization": f"Bearer {DEMO_AGENT_SECRET}"}
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")

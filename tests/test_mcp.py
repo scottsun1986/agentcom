@@ -37,7 +37,15 @@ async def test_mcp_requires_credentials(client):
 
 async def test_mcp_wrong_secret(client):
     r = await client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": INIT_PARAMS},
-                          headers={"X-App-ID": "agentcom-demo", "X-App-Secret": "nope",
+                          headers={"Authorization": "Bearer sk-00000000" + "f" * 40,
+                                   "Accept": "application/json, text/event-stream"})
+    assert r.status_code == 401
+
+
+async def test_mcp_legacy_dual_headers_rejected(client):
+    """标准单 Secret 模式：旧版 X-App-ID / X-App-Secret 双头不再受理。"""
+    r = await client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": INIT_PARAMS},
+                          headers={"X-App-ID": "agentcom-d3adb33f", "X-App-Secret": "whatever",
                                    "Accept": "application/json, text/event-stream"})
     assert r.status_code == 401
 
@@ -51,7 +59,7 @@ async def test_mcp_initialize_and_tools_list(client, mcp_ready):
         assert res["result"]["serverInfo"]["name"] == "agentcom"
         res2 = await jsonrpc(client, "tools/list", {}, id_=2)
         tools = [t["name"] for t in res2["result"]["tools"]]
-        assert len(tools) == 66, f"expected 66 tools, got {len(tools)}"
+        assert len(tools) == 68, f"expected 68 tools, got {len(tools)}"
         assert EXPECTED_TOOLS <= set(tools), f"missing: {EXPECTED_TOOLS - set(tools)}"
 
 
@@ -101,9 +109,18 @@ async def test_tool_fleet_available_cars(client):
 
 
 async def test_tool_research_check_conflicts(client):
-    from app.mcp.server import research_check_conflicts
-    data = await research_check_conflicts(
-        route_points=["XX区政务服务中心"], start_date="2026-10-02", end_date="2026-10-04")
+    """自建课题占位后检测同点位（动态未来日期），必须命中冲突。"""
+    import uuid as _uuid
+    from datetime import date, timedelta
+    from app.mcp.server import research_check_conflicts, research_register_plan
+    point = f"E2E撞期点位-{_uuid.uuid4().hex[:6]}"
+    sd = str(date.today() + timedelta(days=15))
+    ed = str(date.today() + timedelta(days=17))
+    await research_register_plan(
+        title="撞期检测占位课题", leader_name="张明",
+        lead_dept_id="00000000-0000-0000-0000-000000000010",
+        start_date=sd, end_date=ed, route_points=[point])
+    data = await research_check_conflicts(route_points=[point], start_date=sd, end_date=ed)
     assert data["has_conflict"] is True
 
 
@@ -115,7 +132,7 @@ async def test_tool_assets_stocktake_scan(client):
     async with async_session_factory() as db:
         plan = (await db.execute(select(AstStocktakePlan).limit(1))).scalars().first()
         pid = str(plan.plan_id)
-    h = {"X-App-ID": "agentcom-demo", "X-App-Secret": "agentcom-demo-secret-2026"}
+    h = dict(AGENT_CRED)
     rows = (await client.get("/api/assets/ledger?status=IN_STOCK", headers=h)).json()["rows"]
     code = rows[0]["asset_code"]
     data = await assets_stocktake_scan(plan_id=pid, asset_code=code)
@@ -167,7 +184,6 @@ async def test_scope_limited_credential_denied(client, admin_headers):
     r = await client.post("/api/system/apps", headers=admin_headers,
                           json={"app_name": "狭窄凭据2", "scopes": "knowledge:read"})
     data = r.json()["data"]
-    app_id, secret = data["app_id"], data["app_secret"]
     try:
         from app.mcp import server as srv
         fake = type("C", (), {"scopes": "knowledge:read", "is_active": True, "app_name": "t"})()
@@ -190,12 +206,13 @@ async def test_sse_endpoint_route_registered(client):
 
 
 async def test_app_secret_rotation(client, admin_headers):
-    """重置密钥：旧密钥立即失效，新密钥可调用，响应含完整 mcp_config。"""
+    """重置密钥：旧密钥立即失效，新密钥可调用，响应含完整 mcp_config（单 Bearer 头）。"""
     r = await client.post("/api/system/apps", headers=admin_headers,
                           json={"app_name": "轮换测试凭据", "scopes": "knowledge:read"})
     d = r.json()["data"]
     old_secret = d["app_secret"]
-    h = {"X-App-ID": d["app_id"], "X-App-Secret": old_secret}
+    assert old_secret.startswith("sk-")
+    h = {"Authorization": f"Bearer {old_secret}"}
     ok1 = await client.get("/api/knowledge/documents", headers=h)
     assert ok1.status_code == 200
     r2 = await client.put(f"/api/system/apps/{d['id']}/rotate", headers=admin_headers)
@@ -203,10 +220,10 @@ async def test_app_secret_rotation(client, admin_headers):
     nd = r2.json()["data"]
     assert nd["app_secret"] != old_secret
     assert "mcpServers" in nd["mcp_config"]
-    old_h = {"X-App-ID": d["app_id"], "X-App-Secret": old_secret}
-    dead = await client.get("/api/knowledge/documents", headers=old_h)
+    assert "Authorization" in nd["mcp_config"]["mcpServers"]["agentcom"]["headers"]
+    dead = await client.get("/api/knowledge/documents", headers=h)
     assert dead.status_code == 401
-    new_h = {"X-App-ID": nd["app_id"], "X-App-Secret": nd["app_secret"]}
+    new_h = {"Authorization": f"Bearer {nd['app_secret']}"}
     alive = await client.get("/api/knowledge/documents", headers=new_h)
     assert alive.status_code == 200
     await client.delete(f"/api/system/apps/{d['id']}", headers=admin_headers)
